@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesas Matrimonio - Feli & Domi</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f3ef;
+    --card: #ffffff;
+    --border: #e5e2dd;
+    --text: #2c2c2c;
+    --text-muted: #888;
+    --accent: #b08968;
+    --accent-light: #dbc1ac;
+    --novios: #8b5e3c;
+    --danger: #c0392b;
+    --success: #27ae60;
+    --warning: #e67e22;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ===== HEADER ===== */
+  header {
+    background: linear-gradient(135deg, var(--novios), var(--accent));
+    color: white;
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    z-index: 100;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  }
+  header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: 0.5px; }
+  .header-stats { display: flex; gap: 16px; font-size: 0.8rem; opacity: 0.95; }
+  .header-stats span { white-space: nowrap; }
+  .header-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .header-group { display: flex; gap: 4px; align-items: center; padding-right: 8px; border-right: 1px solid rgba(255,255,255,0.2); margin-right: 4px; }
+  .header-group:last-child { border-right: none; margin-right: 0; padding-right: 0; }
+  .btn {
+    padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 0.78rem; font-weight: 500; transition: all 0.2s;
+  }
+  .btn-primary { background: white; color: var(--novios); }
+  .btn-primary:hover { background: #f0ebe6; }
+  .btn-secondary { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); }
+  .btn-secondary:hover { background: rgba(255,255,255,0.3); }
+  .btn-danger { background: var(--danger); color: white; }
+  #csvInput { display: none; }
+  .dropdown { position: relative; display: inline-block; }
+  .dropdown-toggle { display: flex; align-items: center; gap: 4px; }
+  .dropdown-toggle::after { content: '▾'; font-size: 0.65rem; }
+  .dropdown-menu {
+    display: none; position: absolute; top: 100%; right: 0; margin-top: 4px;
+    background: white; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    min-width: 160px; z-index: 100; overflow: hidden;
+  }
+  .dropdown-menu.show { display: block; }
+  .dropdown-menu button, .dropdown-menu label {
+    display: block; width: 100%; padding: 8px 14px; border: none; background: none;
+    text-align: left; font-size: 0.8rem; cursor: pointer; color: var(--text);
+  }
+  .dropdown-menu button:hover, .dropdown-menu label:hover { background: #f5f0eb; }
+  .dropdown-menu .danger { color: var(--danger); }
+  .dropdown-menu .danger:hover { background: #fdecea; }
+
+  /* ===== LAYOUT ===== */
+  .layout { display: flex; height: calc(100vh - 52px); }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    width: 320px; min-width: 320px; background: var(--card);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .sidebar-header { padding: 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-header h2 { font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
+  .search-box {
+    width: 100%; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 0.82rem; outline: none;
+  }
+  .search-box:focus { border-color: var(--accent); }
+  .filter-row { display: flex; gap: 3px; margin-top: 6px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .filter-btn {
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 10px;
+    background: white; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;
+  }
+  .filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .filter-btn.meta { background: #f0ebe6; font-weight: 600; border-color: var(--accent-light); }
+  .filter-btn.meta:hover { background: var(--accent-light); }
+  /* Sidebar scroll & sections */
+  .sidebar-scroll { flex: 1; overflow-y: auto; }
+  .sidebar-section { padding: 0 6px 6px; }
+  .sidebar-section-header {
+    padding: 8px 6px 4px; font-size: 0.82rem; font-weight: 600;
+    color: var(--text-muted); position: sticky; top: 0;
+    background: var(--card); z-index: 2; border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .guest-list { padding: 0; }
+
+  /* Sidebar table cards */
+  .sidebar-table {
+    margin-bottom: 6px; border: 1px solid var(--border); border-radius: 8px;
+    background: #fafafa; overflow: hidden;
+  }
+  .sidebar-table.novios { border-color: var(--accent); }
+  .sidebar-table.drag-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
+  .sidebar-table-header {
+    padding: 5px 8px; display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; user-select: none; font-size: 0.78rem;
+  }
+  .sidebar-table.novios .sidebar-table-header { background: linear-gradient(135deg, #f5ebe0, #e8d5c4); }
+  .sidebar-table-header:hover { background: #f0ebe6; }
+  .sidebar-table-header .st-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar-table-header .st-count { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; cursor: pointer; }
+  .sidebar-table-header .st-count.warning { color: var(--danger); font-weight: 600; }
+  .sidebar-table-header .st-count.ok { color: var(--success); }
+  .sidebar-table-body { padding: 2px 4px 4px; min-height: 24px; }
+  .sidebar-table-body .drop-placeholder-sm {
+    color: var(--text-muted); font-size: 0.7rem; text-align: center;
+    padding: 4px; border: 1px dashed var(--border); border-radius: 4px; margin: 2px;
+  }
+  .guest-card {
+    padding: 5px 8px; margin-bottom: 2px; border-radius: 5px; cursor: grab;
+    font-size: 0.78rem; display: flex; align-items: center; gap: 6px;
+    transition: all 0.15s; border: 1px solid transparent; user-select: none;
+  }
+  .guest-card:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .guest-card.dragging { opacity: 0.4; }
+  .guest-card .guest-info { flex: 1; overflow: hidden; min-width: 0; }
+  .guest-card .guest-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .guest-card .guest-subname { font-size: 0.65rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .guest-card .guest-group {
+    font-size: 0.65rem; color: var(--text-muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 90px;
+  }
+  .guest-badges { display: flex; gap: 2px; flex-shrink: 0; }
+  .guest-badge {
+    font-size: 0.6rem; padding: 1px 5px; border-radius: 6px; background: #eee;
+    white-space: nowrap; line-height: 1.4;
+  }
+  .guest-badge.camp { background: #d4edda; }
+  .guest-badge.nino { background: #fff3cd; }
+  .guest-badge.pareja { background: #f5dce8; }
+  .guest-badge.pendiente { background: #ffeaa7; }
+  .guest-card.is-pending { opacity: 0.75; border-left: 3px solid #f0c040; }
+  .partner-warning { font-size: 0.6rem; color: #e67e22; margin-left: 4px; white-space: nowrap; }
+  .guest-partner-link { font-size: 0.6rem; color: #e84393; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ===== FLOOR PLAN ===== */
+  .floor-container {
+    flex: 1; position: relative; overflow: hidden; background: #ede9e3;
+  }
+  .floor-plan {
+    position: absolute; top: 0; left: 0;
+    width: 5000px; height: 4000px;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(176,137,104,0.03) 0%, transparent 70%),
+      linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 40px 40px, 40px 40px;
+    cursor: grab;
+  }
+  .floor-plan.panning { cursor: grabbing; }
+
+  /* Venue labels */
+  .venue-label {
+    position: absolute; font-size: 0.85rem; font-weight: 600;
+    color: rgba(0,0,0,0.15); text-transform: uppercase; letter-spacing: 3px;
+    pointer-events: none; user-select: none;
+  }
+  .venue-label.entrada { top: 20px; left: 50%; transform: translateX(-50%); }
+  .venue-label.pista { bottom: 20px; left: 50%; transform: translateX(-50%); }
+  .venue-zone {
+    position: absolute; border: 2px dashed rgba(0,0,0,0.07); border-radius: 16px;
+    pointer-events: none;
+  }
+  .venue-zone.entrada-zone { top: 10px; left: 50%; transform: translateX(-50%); width: 300px; height: 60px; }
+  .venue-zone.pista-zone { bottom: 10px; left: 50%; transform: translateX(-50%); width: 500px; height: 80px; border-radius: 50%; }
+
+  /* ===== TABLE ON FLOOR ===== */
+  .floor-table {
+    position: absolute; z-index: 1;
+  }
+  .floor-table.selected .table-surface { border-color: #4a90d9; box-shadow: 0 0 0 3px rgba(74,144,217,0.3); }
+
+  /* Round table surface */
+  .table-surface {
+    border: 2px solid var(--border); background: var(--card);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); cursor: grab;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    user-select: none; transition: box-shadow 0.2s, border-color 0.2s;
+  }
+  .table-surface:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+  .table-surface:active { cursor: grabbing; }
+  .floor-table.drag-over .table-surface {
+    border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light);
+  }
+
+  /* Round tables */
+  .floor-table:not(.novios) .table-surface {
+    width: 120px; height: 120px; border-radius: 50%;
+    position: relative;
+  }
+  /* Rectangular non-novios tables */
+  .floor-table.rectangular:not(.novios) .table-surface {
+    width: 200px; height: 70px; border-radius: 12px;
+    position: relative;
+  }
+  .floor-table.rectangular:not(.novios) .table-name-label { max-width: 180px; }
+  /* Novios table — rectangular */
+  .floor-table.novios .table-surface {
+    width: 380px; height: 80px; border-radius: 12px;
+    border-color: var(--accent);
+    background: linear-gradient(135deg, #faf5ef, #f0e6d8);
+  }
+
+  .table-name-label {
+    font-weight: 600; font-size: 0.7rem; cursor: pointer; text-align: center;
+    line-height: 1.2; max-width: 80px; overflow: hidden; text-overflow: ellipsis;
+  }
+  .table-name-label:hover { text-decoration: underline; }
+  .floor-table.novios .table-name-label { max-width: 200px; font-size: 0.8rem; color: var(--novios); }
+  .table-count { font-size: 0.6rem; color: var(--text-muted); cursor: pointer; }
+  .table-count.warning { color: var(--danger); font-weight: 600; }
+  .table-count.ok { color: var(--success); }
+  .table-delete-btn {
+    position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;
+    border-radius: 50%; background: var(--danger); color: white; border: none;
+    font-size: 0.6rem; cursor: pointer; display: none; align-items: center;
+    justify-content: center; z-index: 5; line-height: 1;
+  }
+  .floor-table.show-delete .table-delete-btn { display: flex; }
+
+  /* Seat circles */
+  .seat {
+    position: absolute; width: 52px; height: 52px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.45rem; font-weight: 600; cursor: grab; user-select: none;
+    border: 2px solid rgba(255,255,255,0.8); box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    transition: transform 0.15s, box-shadow 0.15s;
+    text-align: center; line-height: 1.1; padding: 2px; overflow: hidden;
+    word-break: break-word; white-space: normal;
+  }
+  .seat:hover { transform: scale(1.15); box-shadow: 0 2px 8px rgba(0,0,0,0.25); z-index: 10; }
+  .seat.dragging { opacity: 0.4; }
+  .seat.is-pending { border: 2px dashed #f0c040; }
+  .seat .seat-remove {
+    display: none; position: absolute; top: -4px; right: -4px;
+    width: 14px; height: 14px; border-radius: 50%; background: var(--danger);
+    color: white; font-size: 0.5rem; border: none; cursor: pointer;
+    align-items: center; justify-content: center; line-height: 1; z-index: 11;
+  }
+  .seat.show-remove .seat-remove { display: flex; }
+  .seat .seat-partner {
+    position: absolute; bottom: -3px; right: -3px; width: 14px; height: 14px;
+    border-radius: 50%; background: #e84393; color: white; font-size: 7px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid white; line-height: 1; z-index: 5; pointer-events: none;
+  }
+  .seat .seat-partner.warn {
+    background: var(--warning);
+  }
+
+  /* ===== ZOOM CONTROLS ===== */
+  .zoom-controls {
+    position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column;
+    gap: 4px; z-index: 10;
+  }
+  .zoom-btn {
+    width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 8px;
+    background: white; cursor: pointer; font-size: 1.1rem; display: flex;
+    align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .zoom-btn:hover { background: #f5f5f5; }
+  .zoom-level {
+    text-align: center; font-size: 0.7rem; color: var(--text-muted); background: white;
+    padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border);
+  }
+
+  /* Group colors */
+  .group-0 { background: #e8d5c4; } .group-1 { background: #d5e8d4; }
+  .group-2 { background: #dce8f5; } .group-3 { background: #f5dce8; }
+  .group-4 { background: #e8e4d5; } .group-5 { background: #d5e8e8; }
+  .group-6 { background: #f0e6d3; } .group-7 { background: #e0d5f0; }
+  .group-8 { background: #d5f0e6; } .group-9 { background: #f5e8d5; }
+  .group-10 { background: #d5ddf5; } .group-11 { background: #f5d5d5; }
+  .group-12 { background: #d5f5d5; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 500; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .modal-card {
+    background: white; border-radius: 12px; padding: 24px;
+    max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  .modal-card h3 { margin-bottom: 16px; font-size: 1.1rem; }
+  .modal-section { margin-bottom: 16px; }
+  .modal-section h4 { font-size: 0.85rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .modal-section ul { list-style: none; padding: 0; }
+  .modal-section li { font-size: 0.8rem; padding: 3px 8px; border-radius: 4px; margin-bottom: 2px; }
+  .modal-section.added li { background: #d4edda; }
+  .modal-section.removed li { background: #f8d7da; }
+  .modal-section.changed li { background: #fff3cd; }
+  .modal-section.orphaned li { background: #ffe0cc; }
+  .modal-close { margin-top: 12px; width: 100%; padding: 8px; border: none; border-radius: 6px; background: var(--accent); color: white; cursor: pointer; font-size: 0.85rem; }
+  .modal-close:hover { opacity: 0.9; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    padding: 10px 20px; background: #333; color: white; border-radius: 8px;
+    font-size: 0.82rem; z-index: 1000; animation: fadeIn 0.3s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+  .toast.success { background: var(--success); }
+  .toast.warning { background: var(--warning); }
+  .toast.error { background: var(--danger); }
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+  .empty-state {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; color: var(--text-muted);
+  }
+  .empty-state h3 { margin-bottom: 6px; color: var(--text); }
+
+  /* Modal inputs & actions */
+  .modal-input {
+    width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 0.9rem; margin: 8px 0 4px; outline: none;
+  }
+  .modal-input:focus { border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .modal-actions .btn { flex: 1; padding: 8px; font-size: 0.85rem; border: none; border-radius: 6px; cursor: pointer; }
+  .modal-btn-confirm { background: var(--accent); color: white; }
+  .modal-btn-confirm:hover { opacity: 0.9; }
+  .modal-btn-confirm.danger { background: var(--danger); }
+  .modal-btn-cancel { background: #eee; color: var(--text); }
+  .modal-btn-cancel:hover { background: #ddd; }
+  .modal-card p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5; }
+  .modal-card .onboarding-actions { display: flex; gap: 8px; margin-top: 20px; }
+  .modal-card .onboarding-actions .btn { flex: 1; padding: 10px; font-size: 0.85rem; border: none; border-radius: 6px; cursor: pointer; }
+
+  /* Seat tooltip */
+  .seat-tooltip {
+    position: fixed; z-index: 300; background: white; border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    pointer-events: none; font-size: 0.75rem; white-space: nowrap;
+  }
+  .seat-tooltip .st-name { font-weight: 600; font-size: 0.82rem; margin-bottom: 2px; }
+  .seat-tooltip .st-detail { color: var(--text-muted); font-size: 0.7rem; }
+  .seat-tooltip .st-badges { margin-top: 3px; display: flex; gap: 4px; }
+
+  /* Table tooltip */
+  .table-tooltip {
+    position: fixed; z-index: 200; background: white; border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    max-width: 280px; pointer-events: none; font-size: 0.78rem;
+  }
+  .table-tooltip h4 { font-size: 0.82rem; margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .table-tooltip .tt-count { font-weight: 400; color: var(--text-muted); }
+  .table-tooltip ul { list-style: none; padding: 0; margin: 0; }
+  .table-tooltip li { padding: 2px 6px; border-radius: 3px; margin-bottom: 1px; display: flex; justify-content: space-between; gap: 8px; }
+  .table-tooltip li .tt-group { color: var(--text-muted); font-size: 0.7rem; white-space: nowrap; }
+
+  /* Partner highlight */
+  .floor-table.partner-highlight .table-surface {
+    border-color: var(--warning); box-shadow: 0 0 0 3px rgba(230,126,34,0.3);
+  }
+  .sidebar-table.partner-highlight { border-color: var(--warning); box-shadow: 0 0 0 2px rgba(230,126,34,0.3); }
+
+  /* Assigned guest in search */
+  .guest-card.assigned { opacity: 0.7; cursor: pointer; }
+  .guest-card.assigned:hover { opacity: 0.9; }
+  .guest-mesa-tag {
+    font-size: 0.6rem; background: var(--accent-light); color: var(--novios);
+    padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+  }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mesas — Feli & Domi</h1>
+  <div class="header-stats">
+    <span id="statTotal">0 invitados</span>
+    <span id="statAssigned">0 asignados</span>
+    <span id="statUnassigned">0 sin mesa</span>
+    <span id="statTables">0 mesas</span>
+    <span id="lastSaved" style="opacity:0.6"></span>
+    <span id="lastSync" style="opacity:0.6; display:none"></span>
+  </div>
+  <div class="header-actions">
+    <label class="btn btn-primary" for="csvInput">Cargar CSV</label>
+    <input type="file" id="csvInput" accept=".csv">
+    <button class="btn btn-secondary" onclick="addTable()">+ Mesa</button>
+    <button class="btn btn-secondary" onclick="autoAssignByGroup()">Auto-agrupar</button>
+    <button class="btn btn-primary" id="btnShare" onclick="createSharedRoom()">Compartir</button>
+    <button class="btn btn-secondary" id="btnSync" onclick="loadFromCloud()" style="display:none">Sincronizar</button>
+    <div class="dropdown">
+      <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('ddArchivo')">Archivo</button>
+      <div class="dropdown-menu" id="ddArchivo">
+        <label for="jsonInput">Cargar estado</label>
+        <input type="file" id="jsonInput" accept=".json" style="display:none">
+        <button onclick="exportJSON()">Guardar estado</button>
+        <button onclick="exportAssignments()">Exportar CSV</button>
+        <button onclick="exportPDF()">Vista compacta (imprimir)</button>
+        <button onclick="printView()">Imprimir</button>
+      </div>
+    </div>
+    <div class="dropdown">
+      <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('ddHerram')">Herramientas</button>
+      <div class="dropdown-menu" id="ddHerram">
+        <button onclick="addNoviosTable()">Mesa Novios</button>
+        <button onclick="autoLayout()">Ordenar mesas</button>
+        <button class="danger" onclick="resetAll()">Reset</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <input type="text" class="search-box" placeholder="Buscar por nombre, apodo o grupo..." id="searchInput" oninput="renderSidebar()" aria-label="Buscar invitado">
+      <div class="filter-row" id="filterRow"></div>
+    </div>
+    <div class="sidebar-scroll">
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">Sin mesa (<span id="unassignedCount">0</span>)</div>
+        <div class="guest-list" id="guestList"></div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-header" onclick="document.getElementById('tableListBody').style.display = document.getElementById('tableListBody').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon').textContent = document.getElementById('tableListBody').style.display === 'none' ? '▸' : '▾'" style="cursor:pointer"><span class="toggle-icon">▸</span> Mesas (<span id="tableListCount">0</span>)</div>
+        <div id="tableListBody" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floor plan -->
+  <div class="floor-container" id="floorContainer">
+    <div class="floor-plan" id="floorPlan">
+      <div class="venue-zone entrada-zone"></div>
+      <div class="venue-label entrada">ENTRADA</div>
+      <div class="venue-zone pista-zone"></div>
+      <div class="venue-label pista">PISTA DE BAILE & SALIDA</div>
+    </div>
+    <div class="empty-state" id="emptyState">
+      <h3>Carga el CSV para comenzar</h3>
+      <p>Las mesas se pueden arrastrar en el plano</p>
+    </div>
+    <div class="zoom-controls">
+      <button class="zoom-btn" onclick="zoomIn()" aria-label="Acercar">+</button>
+      <div class="zoom-level" id="zoomLevel">100%</div>
+      <button class="zoom-btn" onclick="zoomOut()" aria-label="Alejar">-</button>
+      <button class="zoom-btn" onclick="zoomFit()" aria-label="Ajustar vista" title="Ajustar vista">&#x229e;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ STATE ============
+function toggleDropdown(id) {
+  const menu = document.getElementById(id);
+  const wasOpen = menu.classList.contains('show');
+  document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
+  if (!wasOpen) menu.classList.add('show');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.dropdown')) {
+    document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
+  }
+});
+
+let guests = [];
+let tables = [];  // [{id, name, isNovios, guestIds:[], x, y}]
+let groupNames = [];
+let activeFilters = new Set();
+let tableCounter = 0;
+const STORAGE_KEY = 'matrimonio_mesas_v3';
+const GUEST_KEY = 'matrimonio_guests_v3';
+
+// ============ UNDO (1 level) ============
+let undoState = null;
+function saveUndo() {
+  undoState = { guests: JSON.parse(JSON.stringify(guests)), tables: JSON.parse(JSON.stringify(tables)), tableCounter };
+}
+function undo() {
+  if (!undoState) { showToast('Nada que deshacer', 'warning'); return; }
+  guests = undoState.guests;
+  tables = undoState.tables;
+  tableCounter = undoState.tableCounter;
+  undoState = null;
+  groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort();
+  saveState(); renderAll();
+  showToast('Accion deshecha');
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    e.preventDefault(); undo();
+  }
+});
+
+// ============ MODAL SYSTEM ============
+function showModal(html) {
+  document.querySelector('.modal-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const card = document.createElement('div');
+  card.className = 'modal-card';
+  card.innerHTML = html;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  return { overlay, card };
+}
+
+function showInputModal(title, defaultVal, callback) {
+  const { overlay, card } = showModal(`
+    <h3>${title}</h3>
+    <input class="modal-input" type="text" value="${defaultVal}">
+    <div class="modal-actions">
+      <button class="btn modal-btn-cancel">Cancelar</button>
+      <button class="btn modal-btn-confirm">Aceptar</button>
+    </div>
+  `);
+  const input = card.querySelector('.modal-input');
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+  const submit = () => { const v = input.value.trim(); overlay.remove(); if (v) callback(v); };
+  input.onkeydown = (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') overlay.remove(); };
+  card.querySelector('.modal-btn-cancel').onclick = () => overlay.remove();
+  card.querySelector('.modal-btn-confirm').onclick = submit;
+}
+
+function showConfirmModal(title, message, confirmText, onConfirm, isDanger) {
+  const { overlay, card } = showModal(`
+    <h3>${title}</h3>
+    <p>${message}</p>
+    <div class="modal-actions">
+      <button class="btn modal-btn-cancel">Cancelar</button>
+      <button class="btn modal-btn-confirm${isDanger ? ' danger' : ''}">${confirmText}</button>
+    </div>
+  `);
+  card.querySelector('.modal-btn-cancel').onclick = () => overlay.remove();
+  card.querySelector('.modal-btn-confirm').onclick = () => { overlay.remove(); onConfirm(); };
+  const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+  document.addEventListener('keydown', escHandler);
+}
+
+// ============ TABLE TOOLTIP ============
+let tooltipEl = null;
+let tooltipTimeout = null;
+const groupColorMap = {
+  'group-0':'#e8d5c4','group-1':'#d5e8d4','group-2':'#dce8f5','group-3':'#f5dce8',
+  'group-4':'#e8e4d5','group-5':'#d5e8e8','group-6':'#f0e6d3','group-7':'#e0d5f0',
+  'group-8':'#d5f0e6','group-9':'#f5e8d5','group-10':'#d5ddf5','group-11':'#f5d5d5',
+  'group-12':'#d5f5d5'
+};
+
+function showTableTooltip(tableId, e) {
+  clearTimeout(tooltipTimeout);
+  tooltipTimeout = setTimeout(() => {
+    const table = tables.find(t => t.id === tableId);
+    if (!table || draggingTable) return;
+    hideTableTooltip();
+    const cap = getTableCapacity(table);
+    let html = `<h4>${table.name} <span class="tt-count">${table.guestIds.length}/${cap}</span></h4>`;
+    if (table.guestIds.length === 0) {
+      html += '<div style="color:var(--text-muted);font-size:0.75rem">Mesa vacia</div>';
+    } else {
+      html += '<ul>';
+      table.guestIds.forEach(gid => {
+        const g = guests.find(x => x.id === gid);
+        if (!g) return;
+        const bg = groupColorMap[getGroupColor(g.group)] || '#f5f5f5';
+        html += `<li style="background:${bg}"><span>${g.fullName}</span><span class="tt-group">${g.group}</span></li>`;
+      });
+      html += '</ul>';
+    }
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'table-tooltip';
+    tooltipEl.innerHTML = html;
+    document.body.appendChild(tooltipEl);
+    const rect = tooltipEl.getBoundingClientRect();
+    let x = e.clientX + 12, y = e.clientY + 12;
+    if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 12;
+    if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - 12;
+    tooltipEl.style.left = x + 'px';
+    tooltipEl.style.top = y + 'px';
+  }, 150);
+}
+
+function hideTableTooltip() {
+  clearTimeout(tooltipTimeout);
+  if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
+}
+
+// ============ SEAT TOOLTIP ============
+let seatTooltipEl = null;
+
+function showSeatTooltip(guestId, tableId, e) {
+  hideSeatTooltip();
+  const g = guests.find(x => x.id === guestId);
+  const t = tables.find(x => x.id === tableId);
+  if (!g) return;
+  const partnerWarning = getPartnerWarning(g, tableId);
+  let badges = '';
+  if (g.isCamp) badges += '<span class="guest-badge camp">⛺ Camp</span>';
+  if (g.isChild) badges += '<span class="guest-badge nino">👶 Nino</span>';
+  if (g.isPartner) badges += '<span class="guest-badge pareja">+1 Pareja</span>';
+  if (g.isPending) badges += `<span class="guest-badge pendiente">⏳ ${g.estado || 'Pendiente'}</span>`;
+
+  seatTooltipEl = document.createElement('div');
+  seatTooltipEl.className = 'seat-tooltip';
+  seatTooltipEl.innerHTML = `
+    <div class="st-name">${g.fullName}</div>
+    ${g.nickname && g.nickname !== g.fullName ? `<div class="st-detail">"${g.nickname}"</div>` : ''}
+    <div class="st-detail">${g.group}${t ? ' — ' + t.name : ''}${partnerWarning}</div>
+    ${badges ? `<div class="st-badges">${badges}</div>` : ''}
+  `;
+  document.body.appendChild(seatTooltipEl);
+  positionSeatTooltip(e);
+}
+
+function positionSeatTooltip(e) {
+  if (!seatTooltipEl) return;
+  const rect = seatTooltipEl.getBoundingClientRect();
+  let x = e.clientX + 10, y = e.clientY - rect.height - 10;
+  if (y < 4) y = e.clientY + 14;
+  if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 10;
+  seatTooltipEl.style.left = x + 'px';
+  seatTooltipEl.style.top = y + 'px';
+}
+
+function hideSeatTooltip() {
+  if (seatTooltipEl) { seatTooltipEl.remove(); seatTooltipEl = null; }
+}
+
+// ============ PAN & ZOOM ============
+let scale = 1;
+let panX = 0, panY = 0;
+let isPanning = false;
+let panStartX, panStartY;
+const floorPlan = document.getElementById('floorPlan');
+const floorContainer = document.getElementById('floorContainer');
+
+function updateFloorTransform() {
+  floorPlan.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  floorPlan.style.transformOrigin = '0 0';
+  document.getElementById('zoomLevel').textContent = `${Math.round(scale * 100)}%`;
+}
+
+floorContainer.addEventListener('mousedown', (e) => {
+  if (e.target === floorPlan || e.target.classList.contains('venue-label') ||
+      e.target.classList.contains('venue-zone') || e.target === floorContainer) {
+    isPanning = true;
+    panStartX = e.clientX - panX;
+    panStartY = e.clientY - panY;
+    floorPlan.classList.add('panning');
+    e.preventDefault();
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (isPanning) {
+    panX = e.clientX - panStartX;
+    panY = e.clientY - panStartY;
+    updateFloorTransform();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  isPanning = false;
+  floorPlan.classList.remove('panning');
+});
+
+// Pinch (ctrlKey) = zoom, scroll normal = pan
+floorContainer.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.ctrlKey) {
+    // Pinch-to-zoom
+    const rect = floorContainer.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const worldX = (mouseX - panX) / scale;
+    const worldY = (mouseY - panY) / scale;
+    const delta = e.deltaY > 0 ? 0.95 : 1.05;
+    scale = Math.max(0.3, Math.min(3, scale * delta));
+    panX = mouseX - worldX * scale;
+    panY = mouseY - worldY * scale;
+  } else {
+    panX -= e.deltaX;
+    panY -= e.deltaY;
+  }
+  updateFloorTransform();
+}, { passive: false });
+
+function zoomIn() { scale = Math.min(3, scale * 1.2); updateFloorTransform(); }
+function zoomOut() { scale = Math.max(0.3, scale / 1.2); updateFloorTransform(); }
+function zoomFit() {
+  const rect = floorContainer.getBoundingClientRect();
+  // Fit to actual content bounds
+  let maxX = 800, maxY = 600;
+  tables.forEach(t => {
+    maxX = Math.max(maxX, (t.x || 0) + 400);
+    maxY = Math.max(maxY, (t.y || 0) + 400);
+  });
+  scale = Math.min(rect.width / maxX, rect.height / maxY) * 0.9;
+  panX = (rect.width - maxX * scale) / 2;
+  panY = (rect.height - maxY * scale) / 2;
+  updateFloorTransform();
+}
+
+// ============ CSV LOADING ============
+document.getElementById('csvInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    Papa.parse(file, {
+      header: true, skipEmptyLines: true,
+      complete: function(results) {
+        // Validate required columns
+        if (results.data.length > 0) {
+          const cols = Object.keys(results.data[0]);
+          const required = ['ID', 'Estado', 'Lista comida', 'Lista camping'];
+          const missing = required.filter(r => !cols.includes(r));
+          if (missing.length > 0) {
+            showToast(`CSV invalido: faltan columnas ${missing.join(', ')}`, 'error');
+            e.target.value = '';
+            return;
+          }
+        }
+        processCSV(results.data); e.target.value = '';
+      },
+      error: function(err) {
+        showToast('Error al leer CSV: ' + err.message, 'error');
+        e.target.value = '';
+      }
+    });
+  } catch (err) {
+    showToast('Error al procesar CSV: ' + err.message, 'error');
+    e.target.value = '';
+  }
+});
+
+function processCSV(rows) {
+  const newGuests = [];
+  let placeholderCount = 0;
+  rows.forEach(row => {
+    const id = (row['ID'] || '').trim();
+    if (!id) return; // Skip totals row
+
+    const listaComida = (row['Lista comida'] || '').trim();
+    const listaCamping = (row['Lista camping'] || '').trim();
+    if (listaComida !== '1' && listaCamping !== '1') return;
+
+    const estado = (row['Estado'] || '').trim();
+    if (estado === 'No asiste') return; // Skip declined guests
+
+    const name = (row['Nombre'] || '').trim();
+    const surname = (row['Apellidos'] || '').trim();
+    const fullName = (row['Nombre Completo'] || '').trim();
+    const group = (row['Dueño'] || '').trim();
+
+    let displayName = fullName || `${name} ${surname}`.trim();
+    if (!displayName) {
+      placeholderCount++;
+      displayName = `[Por confirmar ${placeholderCount}] - ${group || 'Sin grupo'}`;
+    }
+
+    const nickname = (row['Sobrenombre'] || '').trim();
+    const isCamp = listaCamping === '1';
+    const isChild = (row['Niño'] || '').trim() === '1' || (row['Niño'] || '').trim().toLowerCase() === 'true';
+    const esParejaVal = (row['Es pareja'] || '').trim();
+    const isPartner = esParejaVal !== '' && esParejaVal.toUpperCase() !== 'FALSE';
+    const partnerId = (isPartner && esParejaVal.toUpperCase() !== 'TRUE') ? esParejaVal : '';
+    const isPending = estado.toLowerCase().includes('pendiente') || estado.toLowerCase().includes('invitado');
+
+    newGuests.push({
+      id: id,
+      name, surname, fullName: displayName, nickname, group, estado,
+      isCamp, isChild, isPartner, partnerId, isPending
+    });
+  });
+
+  const isFirstLoad = guests.length === 0;
+  const existingIds = new Set(guests.map(g => g.id));
+  const newIds = new Set(newGuests.map(g => g.id));
+
+  // Track changes for changelog
+  const changelog = { added: [], removed: [], changed: [], orphaned: [] };
+
+  // Detect changes in existing guests
+  newGuests.forEach(ng => {
+    const existing = guests.find(g => g.id === ng.id);
+    if (existing) {
+      if (existing.estado !== ng.estado) {
+        changelog.changed.push({ name: ng.fullName, group: ng.group, from: existing.estado, to: ng.estado });
+      }
+      Object.assign(existing, ng);
+    }
+  });
+
+  // Add new guests
+  newGuests.forEach(ng => {
+    if (!existingIds.has(ng.id)) {
+      guests.push(ng);
+      changelog.added.push({ name: ng.fullName, group: ng.group });
+    }
+  });
+
+  // Remove guests no longer in CSV — track which table they were in
+  const removedIds = [];
+  guests = guests.filter(g => {
+    if (!newIds.has(g.id)) {
+      const inTable = tables.find(t => t.guestIds.includes(g.id));
+      const removedInfo = { id: g.id, name: g.fullName, group: g.group, table: inTable ? inTable.name : null };
+      // Try to find a fuzzy match among new guests (possible ID change)
+      const possibleMatch = newGuests.find(ng =>
+        !existingIds.has(ng.id) && ng.fullName.toLowerCase() === g.fullName.toLowerCase()
+      );
+      if (possibleMatch) {
+        changelog.orphaned.push({ ...removedInfo, matchName: possibleMatch.fullName, matchId: possibleMatch.id });
+      } else {
+        changelog.removed.push(removedInfo);
+      }
+      removedIds.push(g.id);
+      return false;
+    }
+    return true;
+  });
+  if (removedIds.length > 0) {
+    tables.forEach(t => { t.guestIds = t.guestIds.filter(id => !removedIds.includes(id)); });
+  }
+
+  groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort();
+  saveState();
+  renderAll();
+
+  const totalChanges = changelog.added.length + changelog.removed.length + changelog.changed.length + changelog.orphaned.length;
+  if (isFirstLoad && tables.length === 0) {
+    // Onboarding: first load with no tables
+    const { overlay, card } = showModal(`
+      <h3>${guests.length} invitados cargados</h3>
+      <p>Puedes crear mesas automaticas agrupando por grupo social, o empezar a crearlas manualmente.</p>
+      <div class="onboarding-actions">
+        <button class="btn modal-btn-cancel" id="onb-manual">Crear manualmente</button>
+        <button class="btn modal-btn-confirm" id="onb-auto">Auto-agrupar y ordenar</button>
+      </div>
+    `);
+    card.querySelector('#onb-manual').onclick = () => { overlay.remove(); zoomFit(); };
+    card.querySelector('#onb-auto').onclick = () => { overlay.remove(); doAutoAssign(); };
+  } else if (totalChanges === 0) {
+    showToast('CSV recargado sin cambios');
+  } else if (!isFirstLoad) {
+    showChangelog(changelog);
+  } else {
+    showToast(`CSV cargado: ${guests.length} invitados`, 'success');
+    if (tables.length === 0) zoomFit();
+  }
+}
+
+// ============ PERSISTENCE ============
+const NPOINT_ID = location.hash.slice(1);
+let NPOINT_URL = NPOINT_ID ? `https://api.npoint.io/${NPOINT_ID}` : null;
+let _cloudSaveTimeout;
+let _isSyncing = false;
+let _cloudPollInterval;
+
+function saveToCloud() {
+  if (!NPOINT_URL || _isSyncing) return;
+  clearTimeout(_cloudSaveTimeout);
+  _cloudSaveTimeout = setTimeout(async () => {
+    try {
+      await fetch(NPOINT_URL, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tables, tableCounter,
+          activeFilters: [...activeFilters],
+          guests
+        })
+      });
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const syncEl = document.getElementById('lastSync');
+      if (syncEl) syncEl.textContent = `Sync ${hh}:${mm}`;
+    } catch (e) { console.warn('Cloud save failed:', e); }
+  }, 500);
+}
+
+async function loadFromCloud() {
+  if (!NPOINT_URL || _isSyncing) return;
+  _isSyncing = true;
+  try {
+    const res = await fetch(NPOINT_URL);
+    const data = await res.json();
+    if (data && data.tables) {
+      tables = data.tables || [];
+      tableCounter = data.tableCounter || 0;
+      guests = data.guests || [];
+      activeFilters = new Set(data.activeFilters || []);
+      tables.forEach(t => { if (!t.shape) t.shape = 'round'; });
+      groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tables, tableCounter, activeFilters: [...activeFilters] }));
+      localStorage.setItem(GUEST_KEY, JSON.stringify(guests));
+      renderAll();
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const syncEl = document.getElementById('lastSync');
+      if (syncEl) syncEl.textContent = `Sync ${hh}:${mm}`;
+    }
+  } catch (e) { console.warn('Cloud load failed:', e); }
+  _isSyncing = false;
+}
+
+async function createSharedRoom() {
+  const state = {
+    tables, tableCounter,
+    activeFilters: [...activeFilters],
+    guests
+  };
+  try {
+    showToast('Creando sala compartida...');
+    const res = await fetch('https://api.npoint.io/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state)
+    });
+    const text = await res.text();
+    // npoint returns the URL like https://api.npoint.io/XXXX
+    const id = text.trim().replace('https://api.npoint.io/', '');
+    location.hash = id;
+    NPOINT_URL = `https://api.npoint.io/${id}`;
+    startCloudPolling();
+    updateCloudUI();
+    const shareUrl = location.href;
+    showToast('Sala creada. Link copiado al portapapeles.', 'success');
+    try { await navigator.clipboard.writeText(shareUrl); } catch(e) {
+      prompt('Comparte este link:', shareUrl);
+    }
+  } catch (e) {
+    showToast('Error creando sala: ' + e.message, 'warning');
+  }
+}
+
+function startCloudPolling() {
+  if (_cloudPollInterval) clearInterval(_cloudPollInterval);
+  _cloudPollInterval = setInterval(loadFromCloud, 10000);
+}
+
+function updateCloudUI() {
+  const shareBtn = document.getElementById('btnShare');
+  const syncBtn = document.getElementById('btnSync');
+  const syncStatus = document.getElementById('lastSync');
+  if (NPOINT_URL) {
+    if (shareBtn) shareBtn.style.display = 'none';
+    if (syncBtn) syncBtn.style.display = '';
+    if (syncStatus) syncStatus.style.display = '';
+  } else {
+    if (shareBtn) shareBtn.style.display = '';
+    if (syncBtn) syncBtn.style.display = 'none';
+    if (syncStatus) syncStatus.style.display = 'none';
+  }
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ tables, tableCounter, activeFilters: [...activeFilters] }));
+    localStorage.setItem(GUEST_KEY, JSON.stringify(guests));
+  } catch (e) {
+    showToast('No se pudo guardar. Exporta JSON como respaldo.', 'warning');
+    return;
+  }
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  document.getElementById('lastSaved').textContent = `Guardado ${hh}:${mm}`;
+  saveToCloud();
+}
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const s = JSON.parse(saved);
+      tables = s.tables || []; tableCounter = s.tableCounter || 0;
+      tables.forEach(t => { if (!t.shape) t.shape = 'round'; });
+      if (s.activeFilters) s.activeFilters.forEach(f => activeFilters.add(f));
+    }
+    const sg = localStorage.getItem(GUEST_KEY);
+    if (sg) { guests = JSON.parse(sg); groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort(); }
+  } catch (e) { console.error('Error loading state:', e); }
+  if (NPOINT_URL) loadFromCloud();
+}
+
+// ============ TABLE MANAGEMENT ============
+function nextTablePosition() {
+  const cols = 5;
+  const spacingX = 310;
+  const spacingY = 400;
+  const startX = 100;
+  const startY = 120;
+  const idx = tables.length;
+  return { x: startX + (idx % cols) * spacingX, y: startY + Math.floor(idx / cols) * spacingY };
+}
+
+function addTable(name) {
+  tableCounter++;
+  const pos = nextTablePosition();
+  const table = { id: `table-${tableCounter}`, name: name || `Mesa ${tableCounter}`, isNovios: false, capacity: 10, guestIds: [], x: pos.x, y: pos.y, shape: 'round' };
+  tables.push(table);
+  saveState(); renderAll();
+  return table;
+}
+
+function addNoviosTable() {
+  if (tables.some(t => t.isNovios)) { showToast('Ya existe una mesa de novios'); return; }
+  tableCounter++;
+  const table = { id: 'table-novios', name: 'Mesa Novios', isNovios: true, capacity: 26, guestIds: [], x: 800, y: 200 };
+  tables.unshift(table);
+  saveState(); renderAll();
+}
+
+function deleteTable(tableId) {
+  const table = tables.find(t => t.id === tableId);
+  if (!table) return;
+  if (table.guestIds.length > 0) {
+    const names = table.guestIds.slice(0, 5).map(gid => {
+      const g = guests.find(x => x.id === gid); return g ? g.fullName : '?';
+    }).join(', ');
+    const more = table.guestIds.length > 5 ? ` y ${table.guestIds.length - 5} mas` : '';
+    showConfirmModal(
+      `Eliminar "${table.name}"?`,
+      `${table.guestIds.length} invitados quedaran sin mesa: ${names}${more}`,
+      'Si, eliminar',
+      () => { saveUndo(); tables = tables.filter(t => t.id !== tableId); saveState(); renderAll(); },
+      true
+    );
+  } else {
+    saveUndo();
+    tables = tables.filter(t => t.id !== tableId);
+    saveState(); renderAll();
+  }
+}
+
+function renameTable(tableId) {
+  const table = tables.find(t => t.id === tableId);
+  if (!table) return;
+  showInputModal('Nombre de la mesa:', table.name, (newName) => {
+    if (newName) { table.name = newName; saveState(); renderAll(); }
+  });
+}
+
+function setTableCapacity(tableId) {
+  const table = tables.find(t => t.id === tableId);
+  if (!table) return;
+  const cap = table.capacity || (table.isNovios ? 26 : 10);
+  showInputModal('Capacidad de la mesa:', String(cap), (newCap) => {
+    if (newCap !== '' && !isNaN(parseInt(newCap)) && parseInt(newCap) > 0) {
+      table.capacity = parseInt(newCap);
+      saveState(); renderAll();
+    }
+  });
+}
+
+function getTableCapacity(table) {
+  return table.capacity || (table.isNovios ? 26 : 10);
+}
+
+function removeGuestFromTable(guestId) {
+  saveUndo();
+  tables.forEach(t => { t.guestIds = t.guestIds.filter(id => id !== guestId); });
+  saveState(); renderAll();
+}
+
+function getUnassignedGuests() {
+  const assignedIds = new Set(tables.flatMap(t => t.guestIds));
+  return guests.filter(g => !assignedIds.has(g.id));
+}
+
+function getGroupColor(group) {
+  const idx = groupNames.indexOf(group);
+  return idx >= 0 ? `group-${idx % 13}` : '';
+}
+
+// ============ AUTO ASSIGN ============
+function doAutoAssign() {
+  saveUndo();
+  const unassigned = getUnassignedGuests();
+  const byGroup = {};
+  unassigned.forEach(g => {
+    const grp = g.group || 'Sin grupo';
+    if (!byGroup[grp]) byGroup[grp] = [];
+    byGroup[grp].push(g);
+  });
+  Object.entries(byGroup).forEach(([groupName, groupGuests]) => {
+    let chunk = 0;
+    for (let i = 0; i < groupGuests.length; i += 10) {
+      chunk++;
+      const slice = groupGuests.slice(i, i + 10);
+      const suffix = groupGuests.length > 10 ? ` (${chunk})` : '';
+      const table = addTable(`${groupName}${suffix}`);
+      table.guestIds = slice.map(g => g.id);
+    }
+  });
+  saveState(); renderAll();
+  autoLayout();
+  showToast(`Auto-agrupacion: ${Object.keys(byGroup).length} grupos`, 'success');
+}
+
+function autoAssignByGroup() {
+  if (guests.length === 0) { showToast('Carga el CSV primero', 'warning'); return; }
+  const unassigned = getUnassignedGuests();
+  if (unassigned.length === 0) { showToast('Todos ya asignados'); return; }
+  showConfirmModal(
+    'Auto-agrupar por grupo social?',
+    `Se crearan mesas automaticas para ${unassigned.length} invitados sin asignar y se ordenaran en el plano.`,
+    'Auto-agrupar y ordenar',
+    doAutoAssign
+  );
+}
+
+function autoLayout() {
+  if (tables.length === 0) return;
+  const novios = tables.find(t => t.isNovios);
+  const regular = tables.filter(t => !t.isNovios);
+  const cols = Math.ceil(Math.sqrt(regular.length * 1.5));
+  const spacingX = 310;
+  const spacingY = 400;
+  const startX = 80;
+  const startY = 100;
+
+  // Novios table at center-top
+  if (novios) {
+    novios.x = Math.max(80, (cols * spacingX) / 2 - 100);
+    novios.y = startY;
+  }
+
+  const regularStartY = novios ? startY + 350 : startY;
+  regular.forEach((t, i) => {
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    t.x = startX + col * spacingX;
+    t.y = regularStartY + row * spacingY;
+  });
+  saveState(); renderAll();
+  zoomFit();
+  showToast('Mesas reordenadas');
+}
+
+// ============ EXPORT ============
+function exportAssignments() {
+  let csv = 'Mesa,Nombre,Grupo,Estado,Camp,Nino\n';
+  tables.forEach(t => {
+    t.guestIds.forEach(gid => {
+      const g = guests.find(x => x.id === gid);
+      if (g) csv += `"${t.name}","${g.fullName}","${g.group}","${g.estado}",${g.isCamp?'Si':'No'},${g.isChild?'Si':'No'}\n`;
+    });
+  });
+  getUnassignedGuests().forEach(g => {
+    csv += `"SIN MESA","${g.fullName}","${g.group}","${g.estado}",${g.isCamp?'Si':'No'},${g.isChild?'Si':'No'}\n`;
+  });
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'mesas_matrimonio.csv'; a.click();
+  showToast('CSV exportado');
+}
+
+function printView() {
+  const groupColors = {
+    'group-0':'#e8d5c4','group-1':'#d5e8d4','group-2':'#dce8f5','group-3':'#f5dce8',
+    'group-4':'#e8e4d5','group-5':'#d5e8e8','group-6':'#f0e6d3','group-7':'#e0d5f0',
+    'group-8':'#d5f0e6','group-9':'#f5e8d5','group-10':'#d5ddf5','group-11':'#f5d5d5',
+    'group-12':'#d5f5d5'
+  };
+
+  const novios = tables.filter(t => t.isNovios);
+  const regular = tables.filter(t => !t.isNovios).sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...novios, ...regular];
+  const unassigned = getUnassignedGuests();
+
+  let html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+    <title>Mesas - Feli & Domi</title>
+    <style>
+      body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 24px; color: #2c2c2c; }
+      h1 { text-align: center; font-size: 1.5rem; margin-bottom: 4px; color: #8b5e3c; }
+      .subtitle { text-align: center; color: #888; margin-bottom: 24px; font-size: 0.9rem; }
+      .tables-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+      .table-card { border: 1px solid #e5e2dd; border-radius: 8px; padding: 12px; break-inside: avoid; }
+      .table-card.novios { border-color: #b08968; border-width: 2px; grid-column: span 2; }
+      .table-card h3 { font-size: 0.9rem; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee; }
+      .table-card.novios h3 { color: #8b5e3c; }
+      .guest-row { font-size: 0.78rem; padding: 2px 6px; margin-bottom: 1px; border-radius: 3px; display: flex; justify-content: space-between; }
+      .guest-group { color: #888; font-size: 0.7rem; }
+      .count { font-size: 0.75rem; color: #888; }
+      .sin-mesa { margin-top: 24px; padding-top: 16px; border-top: 2px solid #e5e2dd; }
+      .sin-mesa h3 { color: #c0392b; }
+      @media print { body { padding: 12px; } .tables-grid { gap: 10px; } }
+      .no-print { text-align: center; margin-bottom: 16px; }
+      @media print { .no-print { display: none; } }
+    </style></head><body>
+    <div class="no-print"><button onclick="window.print()" style="padding:8px 24px;border:1px solid #ccc;border-radius:6px;cursor:pointer;font-size:0.9rem">Imprimir</button></div>
+    <h1>Mesas &mdash; Feli & Domi</h1>
+    <p class="subtitle">${new Date().toLocaleDateString('es-CL', {day:'numeric',month:'long',year:'numeric'})} &bull; ${guests.length} invitados &bull; ${tables.length} mesas</p>
+    <div class="tables-grid">`;
+
+  sorted.forEach(t => {
+    const cls = t.isNovios ? 'table-card novios' : 'table-card';
+    html += `<div class="${cls}"><h3>${t.name} <span class="count">(${t.guestIds.length})</span></h3>`;
+    t.guestIds.forEach(gid => {
+      const g = guests.find(x => x.id === gid);
+      if (!g) return;
+      const colorClass = getGroupColor(g.group);
+      const bgColor = groupColors[colorClass] || '#f5f5f5';
+      html += `<div class="guest-row" style="background:${bgColor}"><span>${g.fullName}</span><span class="guest-group">${g.group}</span></div>`;
+    });
+    if (t.guestIds.length === 0) html += '<div style="color:#999;font-size:0.8rem;text-align:center;padding:8px">Mesa vacía</div>';
+    html += '</div>';
+  });
+
+  html += '</div>';
+
+  if (unassigned.length > 0) {
+    html += `<div class="sin-mesa"><h3>Sin mesa (${unassigned.length})</h3>`;
+    unassigned.forEach(g => {
+      const colorClass = getGroupColor(g.group);
+      const bgColor = groupColors[colorClass] || '#f5f5f5';
+      html += `<div class="guest-row" style="background:${bgColor}"><span>${g.fullName}</span><span class="guest-group">${g.group}</span></div>`;
+    });
+    html += '</div>';
+  }
+
+  html += '</body></html>';
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'vista-mesas.html';
+    a.click();
+    showToast('Popup bloqueado — se descargó como archivo HTML', 'warning');
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function exportPDF() {
+  const novios = tables.filter(t => t.isNovios);
+  const regular = tables.filter(t => !t.isNovios).sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...novios, ...regular];
+  const unassigned = getUnassignedGuests();
+  const totalAssigned = tables.reduce((sum, t) => sum + t.guestIds.length, 0);
+
+  let html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+    <title>Mesas - Feli & Domi (PDF)</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 20px 28px; color: #2c2c2c; font-size: 11px; max-width: 700px; margin: 0 auto; }
+      h1 { text-align: center; font-size: 16px; color: #8b5e3c; margin-bottom: 2px; }
+      .subtitle { text-align: center; color: #888; margin-bottom: 16px; font-size: 10px; }
+      .tables-grid { columns: 2; column-gap: 16px; }
+      .table-card { break-inside: avoid; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; }
+      .table-card.novios { border-color: #b08968; border-width: 2px; column-span: all; }
+      .table-card h3 { font-size: 11px; margin-bottom: 4px; padding-bottom: 3px; border-bottom: 1px solid #eee; }
+      .table-card.novios h3 { color: #8b5e3c; }
+      .count { color: #888; font-weight: normal; }
+      ol { padding-left: 18px; }
+      ol li { font-size: 10px; line-height: 1.5; }
+      .sin-mesa { margin-top: 14px; padding-top: 10px; border-top: 2px solid #ddd; break-inside: avoid; }
+      .sin-mesa h3 { color: #c0392b; font-size: 11px; margin-bottom: 4px; }
+      @media print { body { padding: 12px 16px; } }
+      .no-print { text-align: center; margin-bottom: 12px; }
+      @media print { .no-print { display: none; } }
+    </style></head><body>
+    <div class="no-print"><button onclick="window.print()" style="padding:6px 20px;border:1px solid #ccc;border-radius:6px;cursor:pointer;font-size:12px">Guardar como PDF</button></div>
+    <h1>Mesas &mdash; Feli & Domi</h1>
+    <p class="subtitle">${new Date().toLocaleDateString('es-CL', {day:'numeric',month:'long',year:'numeric'})} &bull; ${totalAssigned} asignados de ${guests.length} &bull; ${tables.length} mesas</p>
+    <div class="tables-grid">`;
+
+  sorted.forEach(t => {
+    const cls = t.isNovios ? 'table-card novios' : 'table-card';
+    html += `<div class="${cls}"><h3>${t.name} <span class="count">(${t.guestIds.length})</span></h3><ol>`;
+    t.guestIds.forEach(gid => {
+      const g = guests.find(x => x.id === gid);
+      if (!g) return;
+      html += `<li>${g.fullName}</li>`;
+    });
+    if (t.guestIds.length === 0) html += '<li style="list-style:none;color:#999">Mesa vacía</li>';
+    html += '</ol></div>';
+  });
+
+  html += '</div>';
+
+  if (unassigned.length > 0) {
+    html += `<div class="sin-mesa"><h3>Sin mesa (${unassigned.length})</h3><ol>`;
+    unassigned.forEach(g => { html += `<li>${g.fullName}</li>`; });
+    html += '</ol></div>';
+  }
+
+  html += '</body></html>';
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mesas-feli-domi.html';
+    a.click();
+    showToast('Popup bloqueado — se descargó como archivo HTML', 'warning');
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function resetAll() {
+  const assigned = tables.reduce((sum, t) => sum + t.guestIds.length, 0);
+  showConfirmModal(
+    'Resetear todo?',
+    `Esto eliminara ${tables.length} mesas y desasignara ${assigned} invitados.`,
+    'Si, eliminar todo',
+    () => { saveUndo(); tables = []; tableCounter = 0; saveState(); renderAll(); showToast('Todo reseteado'); },
+    true
+  );
+}
+
+// ============ JSON EXPORT/IMPORT ============
+function exportJSON() {
+  const now = new Date();
+  const ts = now.toISOString().slice(0,16).replace(/[-:T]/g, c => c === 'T' ? '_' : '');
+  const data = {
+    version: 3,
+    exportDate: now.toISOString(),
+    guests: guests,
+    tables: tables,
+    tableCounter: tableCounter
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mesas_estado_${ts}.json`;
+  a.click();
+  showToast('Estado exportado como JSON');
+}
+
+document.getElementById('jsonInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!data.guests || !Array.isArray(data.guests)) throw new Error('Falta campo "guests"');
+      if (!data.tables || !Array.isArray(data.tables)) throw new Error('Falta campo "tables"');
+      showConfirmModal(
+        'Cargar estado?',
+        `${data.guests.length} invitados y ${data.tables.length} mesas. Esto reemplaza el estado actual.`,
+        'Cargar',
+        () => {
+          saveUndo();
+          guests = data.guests;
+          tables = data.tables;
+          tables.forEach(t => { if (!t.shape) t.shape = 'round'; });
+          tableCounter = data.tableCounter || 0;
+          groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort();
+          saveState(); renderAll(); zoomFit();
+          showToast(`Estado cargado: ${guests.length} invitados, ${tables.length} mesas`, 'success');
+        }
+      );
+    } catch (err) {
+      showToast('Error al cargar JSON: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ============ CHANGELOG MODAL ============
+function showChangelog(cl) {
+  let html = '<h3>Cambios detectados en CSV</h3>';
+
+  if (cl.added.length > 0) {
+    html += '<div class="modal-section added"><h4>&#x2795; Nuevos (' + cl.added.length + ')</h4><ul>';
+    cl.added.forEach(g => { html += `<li><strong>${g.name}</strong> — ${g.group}</li>`; });
+    html += '</ul></div>';
+  }
+
+  if (cl.removed.length > 0) {
+    html += '<div class="modal-section removed"><h4>&#x2796; Removidos (' + cl.removed.length + ')</h4><ul>';
+    cl.removed.forEach(g => {
+      const mesa = g.table ? ` (estaba en ${g.table})` : '';
+      html += `<li><strong>${g.name}</strong> — ${g.group}${mesa}</li>`;
+    });
+    html += '</ul></div>';
+  }
+
+  if (cl.changed.length > 0) {
+    html += '<div class="modal-section changed"><h4>&#x1F504; Cambios de estado (' + cl.changed.length + ')</h4><ul>';
+    cl.changed.forEach(g => {
+      html += `<li><strong>${g.name}</strong> — ${g.from} &rarr; ${g.to}</li>`;
+    });
+    html += '</ul></div>';
+  }
+
+  if (cl.orphaned.length > 0) {
+    html += '<div class="modal-section orphaned"><h4>&#x26A0; Posibles cambios de ID (' + cl.orphaned.length + ')</h4><ul>';
+    cl.orphaned.forEach(g => {
+      const mesa = g.table ? ` (estaba en ${g.table})` : '';
+      html += `<li><strong>${g.name}</strong>${mesa} &rarr; posible match: ${g.matchName} (${g.matchId})</li>`;
+    });
+    html += '</ul></div>';
+  }
+
+  html += '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">Entendido</button>';
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const card = document.createElement('div');
+  card.className = 'modal-card';
+  card.innerHTML = html;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
+// ============ TABLE DRAGGING (on floor) ============
+let draggingTable = null;
+let tableOffsetX = 0, tableOffsetY = 0;
+let tableDragStartX = 0, tableDragStartY = 0;
+let tableDragged = false;
+
+function startTableDrag(e, tableId) {
+  if (e.button !== 0) return;
+  e.stopPropagation();
+  const table = tables.find(t => t.id === tableId);
+  if (!table) return;
+  draggingTable = table;
+  tableDragStartX = e.clientX;
+  tableDragStartY = e.clientY;
+  tableDragged = false;
+  const rect = e.currentTarget.closest('.floor-table').getBoundingClientRect();
+  tableOffsetX = (e.clientX - rect.left) / scale;
+  tableOffsetY = (e.clientY - rect.top) / scale;
+  document.addEventListener('mousemove', onTableDrag);
+  document.addEventListener('mouseup', stopTableDrag);
+}
+
+function onTableDrag(e) {
+  if (!draggingTable) return;
+  const dx = Math.abs(e.clientX - tableDragStartX);
+  const dy = Math.abs(e.clientY - tableDragStartY);
+  if (dx > 5 || dy > 5) tableDragged = true;
+  const floorRect = floorPlan.getBoundingClientRect();
+  const newX = (e.clientX - floorRect.left) / scale - tableOffsetX;
+  const newY = (e.clientY - floorRect.top) / scale - tableOffsetY;
+  draggingTable.x = Math.max(0, Math.round(newX));
+  draggingTable.y = Math.max(0, Math.round(newY));
+  const el = document.querySelector(`[data-table-id="${draggingTable.id}"]`);
+  if (el) { el.style.left = draggingTable.x + 'px'; el.style.top = draggingTable.y + 'px'; }
+}
+
+function stopTableDrag() {
+  if (draggingTable) {
+    // Shape toggle removed — was confusing UX (accidental clicks changed shape)
+    saveState();
+    renderAll();
+  }
+  draggingTable = null;
+  tableDragged = false;
+  document.removeEventListener('mousemove', onTableDrag);
+  document.removeEventListener('mouseup', stopTableDrag);
+}
+
+// ============ GUEST DRAG & DROP ============
+let draggedGuestId = null;
+
+function onGuestDragStart(e, guestId) {
+  draggedGuestId = guestId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', guestId);
+
+  // Custom drag image
+  const guest = guests.find(g => g.id === guestId);
+  if (guest) {
+    const dragEl = document.createElement('div');
+    dragEl.style.cssText = 'position:fixed;top:-1000px;left:-1000px;padding:6px 12px;border-radius:8px;background:white;border:2px solid var(--accent);box-shadow:0 4px 12px rgba(0,0,0,0.2);font-size:0.78rem;font-weight:500;white-space:nowrap;font-family:inherit;color:#2c2c2c;z-index:9999';
+    dragEl.textContent = guest.fullName;
+    document.body.appendChild(dragEl);
+    e.dataTransfer.setDragImage(dragEl, dragEl.offsetWidth / 2, dragEl.offsetHeight / 2);
+    requestAnimationFrame(() => { requestAnimationFrame(() => dragEl.remove()); });
+  }
+
+  requestAnimationFrame(() => e.target.classList.add('dragging'));
+  // Partner highlight
+  if (guest && guest.partnerId) {
+    const partnerTable = tables.find(t => t.guestIds.includes(guest.partnerId));
+    if (partnerTable) {
+      document.querySelector(`[data-table-id="${partnerTable.id}"]`)?.classList.add('partner-highlight');
+      document.querySelector(`[data-sidebar-table="${partnerTable.id}"]`)?.classList.add('partner-highlight');
+    }
+  }
+}
+
+function onGuestDragEnd(e) {
+  e.target.classList.remove('dragging');
+  draggedGuestId = null;
+  document.querySelectorAll('.drag-over, .partner-highlight').forEach(el => el.classList.remove('drag-over', 'partner-highlight'));
+}
+
+function onTableDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+function onTableDragEnter(e, tableId) {
+  e.preventDefault();
+  document.querySelector(`[data-table-id="${tableId}"]`)?.classList.add('drag-over');
+}
+function onTableDragLeave(e, tableId) {
+  const card = document.querySelector(`[data-table-id="${tableId}"]`);
+  if (card && !card.contains(e.relatedTarget)) card.classList.remove('drag-over');
+}
+
+function onTableDrop(e, targetTableId) {
+  e.preventDefault(); e.stopPropagation();
+  const guestId = e.dataTransfer.getData('text/plain') || draggedGuestId;
+  if (!guestId) return;
+  const targetTable = tables.find(t => t.id === targetTableId);
+  if (!targetTable) return;
+  const maxSize = getTableCapacity(targetTable);
+  if (targetTable.guestIds.length >= maxSize && !targetTable.guestIds.includes(guestId)) {
+    showToast(`Mesa llena (max ${maxSize})`, 'warning'); return;
+  }
+  saveUndo();
+  tables.forEach(t => { t.guestIds = t.guestIds.filter(id => id !== guestId); });
+  if (!targetTable.guestIds.includes(guestId)) targetTable.guestIds.push(guestId);
+  document.querySelectorAll('.drag-over, .partner-highlight').forEach(el => el.classList.remove('drag-over', 'partner-highlight'));
+  saveState(); renderAll();
+}
+
+function onSidebarDrop(e) {
+  e.preventDefault();
+  const guestId = e.dataTransfer.getData('text/plain') || draggedGuestId;
+  if (!guestId) return;
+  tables.forEach(t => { t.guestIds = t.guestIds.filter(id => id !== guestId); });
+  saveState(); renderAll();
+}
+
+// ============ HELPER: guest display name ============
+function guestDisplayName(g, compact) {
+  if (compact && g.nickname) return g.nickname;
+  if (g.nickname) return g.nickname;
+  return g.fullName;
+}
+
+function getPartnerWarning(g, currentTableId) {
+  if (!g.partnerId) return '';
+  const partnerTable = tables.find(t => t.guestIds.includes(g.partnerId));
+  if (partnerTable && partnerTable.id === currentTableId) return '';
+  if (partnerTable) return `<span class="partner-warning" title="Pareja en otra mesa">&#x26A0; ${partnerTable.name}</span>`;
+  const partnerGuest = guests.find(x => x.id === g.partnerId);
+  if (partnerGuest) return '<span class="partner-warning" title="Pareja sin mesa">&#x26A0; sin mesa</span>';
+  return '';
+}
+
+function getPartnerDisplay(g) {
+  if (!g.partnerId) return '';
+  const partner = guests.find(x => x.id === g.partnerId);
+  if (!partner) return '';
+  const partnerName = partner.nickname || partner.fullName.split(' ')[0];
+  return `<span class="guest-partner-link">con ${partnerName}</span>`;
+}
+
+function guestBadges(g) {
+  let b = '';
+  if (g.isCamp) b += '<span class="guest-badge camp" title="Camping">&#x26FA;</span>';
+  if (g.isChild) b += '<span class="guest-badge nino" title="Nino">&#x1F476;</span>';
+  if (g.isPartner) b += '<span class="guest-badge pareja" title="Pareja">+1</span>';
+  if (g.isPending) b += '<span class="guest-badge pendiente" title="' + (g.estado || 'Pendiente') + '">&#x23F3;</span>';
+  return b;
+}
+
+// ============ TABLE LIST IN SIDEBAR ============
+function renderTableList() {
+  const body = document.getElementById('tableListBody');
+  document.getElementById('tableListCount').textContent = tables.length;
+  body.innerHTML = '';
+
+  if (tables.length === 0) {
+    body.innerHTML = '<div style="text-align:center;color:#999;padding:8px;font-size:0.78rem">Sin mesas</div>';
+    return;
+  }
+
+  const novios = tables.filter(t => t.isNovios);
+  const regular = tables.filter(t => !t.isNovios).sort((a, b) => a.name.localeCompare(b.name));
+  [...novios, ...regular].forEach(t => {
+    const cap = getTableCapacity(t);
+    const count = t.guestIds.length;
+    let countClass = '';
+    if (count > cap) countClass = 'warning';
+    else if (count >= Math.max(1, cap - 2)) countClass = 'ok';
+
+    const card = document.createElement('div');
+    card.className = `sidebar-table${t.isNovios ? ' novios' : ''}`;
+    card.setAttribute('data-sidebar-table', t.id);
+
+    // Drop target on whole card
+    card.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+    card.ondragenter = (e) => { e.preventDefault(); card.classList.add('drag-over'); };
+    card.ondragleave = (e) => { if (!card.contains(e.relatedTarget)) card.classList.remove('drag-over'); };
+    card.ondrop = (e) => { card.classList.remove('drag-over'); onTableDrop(e, t.id); };
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'sidebar-table-header';
+    header.innerHTML = `
+      <span class="st-name" onclick="scrollToTable('${t.id}')" title="Click para ver en plano">${t.name}</span>
+      <span class="st-count ${countClass}" onclick="event.stopPropagation(); setTableCapacity('${t.id}')" title="Click para cambiar capacidad">${count}/${cap}</span>`;
+    card.appendChild(header);
+
+    // Body with guests
+    const tbody = document.createElement('div');
+    tbody.className = 'sidebar-table-body';
+    if (t.guestIds.length === 0) {
+      tbody.innerHTML = '<div class="drop-placeholder-sm">Arrastra invitados</div>';
+    } else {
+      t.guestIds.forEach(gid => {
+        const g = guests.find(x => x.id === gid);
+        if (!g) return;
+        const colorClass = getGroupColor(g.group);
+        const div = document.createElement('div');
+        div.className = `guest-card ${colorClass}`;
+        div.style.padding = '3px 6px';
+        div.style.marginBottom = '1px';
+        div.style.fontSize = '0.72rem';
+        div.style.cursor = 'pointer';
+        div.draggable = true;
+        div.ondragstart = (e) => onGuestDragStart(e, g.id);
+        div.ondragend = onGuestDragEnd;
+        div.onclick = () => scrollToTable(t.id);
+        const partnerInfo = getPartnerDisplay(g);
+        const partnerWarn = getPartnerWarning(g, t.id);
+        div.innerHTML = `
+          <div class="guest-info">
+            <span class="guest-name">${g.fullName}</span>
+            ${g.nickname ? `<span class="guest-subname">(${g.nickname})</span>` : ''}
+            ${partnerInfo}${partnerWarn}
+          </div>
+          <span class="remove-btn" onclick="event.stopPropagation(); removeGuestFromTable('${g.id}')" style="opacity:0;cursor:pointer;color:var(--danger);font-size:0.8rem;padding:0 3px">&#x2715;</span>`;
+        div.onmouseenter = () => div.querySelector('.remove-btn').style.opacity = '1';
+        div.onmouseleave = () => div.querySelector('.remove-btn').style.opacity = '0';
+        tbody.appendChild(div);
+      });
+    }
+    card.appendChild(tbody);
+    body.appendChild(card);
+  });
+}
+
+function scrollToTable(tableId) {
+  const el = document.querySelector(`[data-table-id="${tableId}"]`);
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const containerRect = floorContainer.getBoundingClientRect();
+  const tableX = (parseInt(el.style.left) || 0);
+  const tableY = (parseInt(el.style.top) || 0);
+  panX = containerRect.width / 2 - tableX * scale - 90;
+  panY = containerRect.height / 2 - tableY * scale - 60;
+  updateFloorTransform();
+
+  // Flash highlight
+  el.classList.add('selected');
+  setTimeout(() => el.classList.remove('selected'), 1500);
+  // Also highlight in sidebar
+  scrollSidebarToTable(tableId);
+}
+
+function scrollSidebarToTable(tableId) {
+  const el = document.querySelector(`[data-sidebar-table="${tableId}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.style.boxShadow = '0 0 0 2px var(--accent)';
+  setTimeout(() => el.style.boxShadow = '', 1500);
+}
+
+// ============ RENDERING ============
+function renderAll() {
+  renderSidebar(); renderFloor(); renderStats(); renderFilters(); renderTableList();
+  document.getElementById('emptyState').style.display = (tables.length === 0 && guests.length === 0) ? 'block' : 'none';
+}
+
+function renderStats() {
+  const assigned = tables.reduce((sum, t) => sum + t.guestIds.length, 0);
+  document.getElementById('statTotal').textContent = `${guests.length} invitados`;
+  document.getElementById('statAssigned').textContent = `${assigned} asignados`;
+  document.getElementById('statUnassigned').textContent = `${guests.length - assigned} sin mesa`;
+  document.getElementById('statTables').textContent = `${tables.length} mesas`;
+}
+
+function renderFilters() {
+  const row = document.getElementById('filterRow');
+  row.innerHTML = '';
+
+  // "Todos" and "Ninguno" meta buttons
+  const todosBtn = document.createElement('button');
+  todosBtn.className = 'filter-btn meta';
+  todosBtn.textContent = 'Todos';
+  todosBtn.onclick = () => {
+    groupNames.forEach(g => activeFilters.add(g));
+    renderSidebar(); renderFilters();
+  };
+  row.appendChild(todosBtn);
+
+  const ningunoBtn = document.createElement('button');
+  ningunoBtn.className = 'filter-btn meta';
+  ningunoBtn.textContent = 'Ninguno';
+  ningunoBtn.onclick = () => {
+    activeFilters.clear();
+    renderSidebar(); renderFilters();
+  };
+  row.appendChild(ningunoBtn);
+
+  groupNames.forEach(g => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (activeFilters.has(g) ? ' active' : '');
+    btn.textContent = g;
+    btn.onclick = () => {
+      if (activeFilters.has(g)) activeFilters.delete(g); else activeFilters.add(g);
+      renderSidebar(); renderFilters();
+    };
+    row.appendChild(btn);
+  });
+}
+
+function renderSidebar() {
+  const list = document.getElementById('guestList');
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  let unassigned = getUnassignedGuests();
+
+  if (search) {
+    unassigned = unassigned.filter(g =>
+      g.fullName.toLowerCase().includes(search) ||
+      (g.nickname && g.nickname.toLowerCase().includes(search)) ||
+      g.group.toLowerCase().includes(search)
+    );
+  }
+  if (activeFilters.size > 0) unassigned = unassigned.filter(g => activeFilters.has(g.group));
+
+  unassigned.sort((a, b) => {
+    const ga = a.group || 'zzz', gb = b.group || 'zzz';
+    if (ga !== gb) return ga.localeCompare(gb);
+    return a.fullName.localeCompare(b.fullName);
+  });
+
+  document.getElementById('unassignedCount').textContent = getUnassignedGuests().length;
+  list.innerHTML = '';
+  list.ondragover = (e) => e.preventDefault();
+  list.ondrop = onSidebarDrop;
+
+  if (unassigned.length === 0 && guests.length > 0 && !search) {
+    list.innerHTML = '<div style="text-align:center;color:#999;padding:20px;font-size:0.82rem">Todos asignados</div>';
+  } else if (unassigned.length === 0 && search && guests.length > 0) {
+    // Will show assigned matches below
+  } else {
+    unassigned.forEach(g => {
+      const card = document.createElement('div');
+      card.className = `guest-card ${getGroupColor(g.group)}${g.isPending ? ' is-pending' : ''}`;
+      card.draggable = true;
+      card.ondragstart = (e) => onGuestDragStart(e, g.id);
+      card.ondragend = onGuestDragEnd;
+
+      const primaryName = g.fullName;
+      const secondaryName = g.nickname ? `(${g.nickname})` : '';
+      const partnerInfo = getPartnerDisplay(g);
+
+      card.innerHTML = `
+        <div class="guest-info">
+          <span class="guest-name">${primaryName}</span>
+          ${secondaryName ? `<span class="guest-subname">${secondaryName}</span>` : ''}
+          ${partnerInfo}
+        </div>
+        <span class="guest-group">${g.group}</span>
+        <div class="guest-badges">${guestBadges(g)}</div>
+      `;
+      list.appendChild(card);
+    });
+  }
+
+  // Global search: also show assigned matches
+  if (search) {
+    const assignedIds = new Set(tables.flatMap(t => t.guestIds));
+    let assignedMatches = guests.filter(g => assignedIds.has(g.id) && (
+      g.fullName.toLowerCase().includes(search) ||
+      (g.nickname && g.nickname.toLowerCase().includes(search)) ||
+      g.group.toLowerCase().includes(search)
+    ));
+    if (activeFilters.size > 0) assignedMatches = assignedMatches.filter(g => activeFilters.has(g.group));
+
+    if (assignedMatches.length > 0) {
+      const header = document.createElement('div');
+      header.style.cssText = 'padding:6px 8px;font-size:0.72rem;color:var(--text-muted);font-weight:600;border-top:1px solid var(--border);margin-top:4px';
+      header.textContent = `En mesas (${assignedMatches.length})`;
+      list.appendChild(header);
+      assignedMatches.forEach(g => {
+        const table = tables.find(t => t.guestIds.includes(g.id));
+        const card = document.createElement('div');
+        card.className = `guest-card ${getGroupColor(g.group)} assigned`;
+        card.draggable = true;
+        card.ondragstart = (e) => onGuestDragStart(e, g.id);
+        card.ondragend = onGuestDragEnd;
+        card.onclick = () => { if (table) scrollToTable(table.id); };
+        card.innerHTML = `
+          <div class="guest-info"><span class="guest-name">${g.fullName}</span></div>
+          <span class="guest-mesa-tag">${table ? table.name : ''}</span>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    // Empty state when no results at all
+    if (unassigned.length === 0 && assignedMatches.length === 0) {
+      list.innerHTML = `<div style="text-align:center;color:#999;padding:20px;font-size:0.82rem">No se encontraron invitados para "${document.getElementById('searchInput').value}"</div>`;
+    }
+  }
+}
+
+function getInitials(g) {
+  if (g.nickname) return g.nickname;
+  const parts = g.fullName.replace(/\[.*?\]/g, '?').split(' ').filter(Boolean);
+  if (parts.length >= 2) return parts[0] + ' ' + parts[1][0] + '.';
+  return g.fullName;
+}
+
+function renderFloor() {
+  document.querySelectorAll('.floor-table').forEach(el => el.remove());
+
+  tables.forEach(table => {
+    const cap = getTableCapacity(table);
+    const count = table.guestIds.length;
+    let countClass = '';
+    if (count > cap) countClass = 'warning';
+    else if (count >= Math.max(1, cap - 2)) countClass = 'ok';
+
+    const isNovios = table.isNovios;
+    const isRectangular = !isNovios && table.shape === 'rectangular';
+    const seatSize = 52;
+    const tableW = isNovios ? 380 : (isRectangular ? 200 : 120);
+    const tableH = isNovios ? 80 : (isRectangular ? 70 : 120);
+    const seatRadius = (isNovios || isRectangular) ? 0 : 95;
+    const containerPad = seatSize / 2 + 4; // padding around table for seats
+
+    const el = document.createElement('div');
+    el.className = `floor-table${isNovios ? ' novios' : ''}${isRectangular ? ' rectangular' : ''}`;
+    el.setAttribute('data-table-id', table.id);
+    el.style.left = (table.x || 100) + 'px';
+    el.style.top = (table.y || 100) + 'px';
+    el.style.width = (tableW + containerPad * 2) + 'px';
+    el.style.height = ((isNovios || isRectangular) ? (tableH + containerPad * 2 + (count > 0 ? seatSize : 0)) : (tableW + containerPad * 2)) + 'px';
+
+    // Drop target
+    el.ondragover = onTableDragOver;
+    el.ondragenter = (e) => onTableDragEnter(e, table.id);
+    el.ondragleave = (e) => onTableDragLeave(e, table.id);
+    el.ondrop = (e) => onTableDrop(e, table.id);
+
+    // Table surface (the actual table visual)
+    const surface = document.createElement('div');
+    surface.className = 'table-surface';
+    surface.style.position = 'absolute';
+    surface.style.left = containerPad + 'px';
+    surface.style.top = containerPad + 'px';
+    // Capacity-based border color
+    if (!isNovios) {
+      if (count === 0) surface.style.borderColor = '#ccc';
+      else if (count > cap) surface.style.borderColor = 'var(--danger)';
+      else if (count >= cap - 2) surface.style.borderColor = 'var(--success)';
+    }
+    surface.onmousedown = (e) => startTableDrag(e, table.id);
+    surface.onclick = (e) => {
+      if (!tableDragged) {
+        const ft = el;
+        const wasActive = ft.classList.contains('show-delete');
+        document.querySelectorAll('.floor-table.show-delete').forEach(f => f.classList.remove('show-delete'));
+        document.querySelectorAll('.seat.show-remove').forEach(s => s.classList.remove('show-remove'));
+        if (!wasActive) ft.classList.add('show-delete');
+      }
+    };
+    surface.oncontextmenu = (e) => {
+      e.preventDefault();
+      if (!isNovios) {
+        table.shape = table.shape === 'rectangular' ? 'round' : 'rectangular';
+        saveState(); renderAll();
+      }
+    };
+    surface.onmouseenter = (e) => showTableTooltip(table.id, e);
+    surface.onmousemove = (e) => { if (tooltipEl) { tooltipEl.style.left = (e.clientX + 12) + 'px'; tooltipEl.style.top = (e.clientY + 12) + 'px'; } };
+    surface.onmouseleave = hideTableTooltip;
+    surface.innerHTML = `
+      <span class="table-name-label" onclick="event.stopPropagation(); renameTable('${table.id}')">${table.name}</span>
+      <span class="table-count ${countClass}" onclick="event.stopPropagation(); setTableCapacity('${table.id}')" title="Cambiar capacidad">${count}/${cap}</span>`;
+    el.appendChild(surface);
+
+    // Delete button
+    const delBtn = document.createElement('button');
+    delBtn.className = 'table-delete-btn';
+    delBtn.innerHTML = '&#x2715;';
+    delBtn.onclick = () => deleteTable(table.id);
+    el.appendChild(delBtn);
+
+    // Seats
+    if (count > 0) {
+      const centerX = containerPad + tableW / 2;
+      const centerY = containerPad + tableH / 2;
+
+      table.guestIds.forEach((gid, i) => {
+        const g = guests.find(x => x.id === gid);
+        if (!g) return;
+        const colorClass = getGroupColor(g.group);
+
+        let seatX, seatY;
+        if (isNovios || isRectangular) {
+          // Rectangular: seats in two rows (top and bottom)
+          const totalTop = Math.ceil(count / 2);
+          const totalBottom = count - totalTop;
+          if (i < totalTop) {
+            // Top row
+            const spacing = tableW / (totalTop + 1);
+            seatX = containerPad + spacing * (i + 1) - seatSize / 2;
+            seatY = containerPad - seatSize / 2 - 2;
+          } else {
+            // Bottom row
+            const bi = i - totalTop;
+            const spacing = tableW / (totalBottom + 1);
+            seatX = containerPad + spacing * (bi + 1) - seatSize / 2;
+            seatY = containerPad + tableH - seatSize / 2 + 2;
+          }
+        } else {
+          // Round: seats around the circle
+          const angle = (2 * Math.PI * i / count) - Math.PI / 2;
+          seatX = centerX + seatRadius * Math.cos(angle) - seatSize / 2;
+          seatY = centerY + seatRadius * Math.sin(angle) - seatSize / 2;
+        }
+
+        const seat = document.createElement('div');
+        seat.className = `seat ${colorClass}${g.isPending ? ' is-pending' : ''}`;
+        seat.style.left = seatX + 'px';
+        seat.style.top = seatY + 'px';
+        seat.draggable = true;
+        seat.setAttribute('aria-label', `${g.fullName}, ${table.name}, ${g.group}`);
+        seat.onmouseenter = (e) => showSeatTooltip(g.id, table.id, e);
+        seat.onmousemove = (e) => positionSeatTooltip(e);
+        seat.onmouseleave = hideSeatTooltip;
+        seat.ondragstart = (e) => { hideSeatTooltip(); onGuestDragStart(e, g.id); };
+        seat.ondragend = onGuestDragEnd;
+        seat.textContent = getInitials(g);
+        seat.onclick = (e) => {
+          e.stopPropagation();
+          // Toggle show-remove on this seat, hide others
+          const wasActive = seat.classList.contains('show-remove');
+          document.querySelectorAll('.seat.show-remove').forEach(s => s.classList.remove('show-remove'));
+          document.querySelectorAll('.floor-table.show-delete').forEach(ft => ft.classList.remove('show-delete'));
+          if (!wasActive) seat.classList.add('show-remove');
+        };
+
+        // Partner indicator
+        if (g.isPartner || g.partnerId) {
+          const partnerInSameTable = g.partnerId && table.guestIds.includes(g.partnerId);
+          const partnerElsewhere = g.partnerId && !partnerInSameTable;
+          const badge = document.createElement('span');
+          badge.className = 'seat-partner' + (partnerElsewhere ? ' warn' : '');
+          badge.textContent = partnerElsewhere ? '!' : '\u2764';
+          seat.appendChild(badge);
+        }
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'seat-remove';
+        removeBtn.innerHTML = '&#x2715;';
+        removeBtn.onclick = (e) => { e.stopPropagation(); removeGuestFromTable(g.id); };
+        seat.appendChild(removeBtn);
+
+        el.appendChild(seat);
+      });
+    }
+
+    floorPlan.appendChild(el);
+  });
+}
+
+// ============ TOAST ============
+function showToast(msg, type) {
+  document.querySelector('.toast')?.remove();
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ` ${type}` : '');
+  t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
+}
+
+// ============ DISMISS X ON CLICK OUTSIDE ============
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.seat') && !e.target.closest('.table-delete-btn')) {
+    document.querySelectorAll('.seat.show-remove').forEach(s => s.classList.remove('show-remove'));
+    document.querySelectorAll('.floor-table.show-delete').forEach(f => f.classList.remove('show-delete'));
+  }
+});
+
+// ============ INIT ============
+loadState();
+renderAll();
+zoomFit();
+updateCloudUI();
+if (NPOINT_URL) startCloudPolling();
+if (guests.length > 0) showToast(`Cargado: ${guests.length} invitados, ${tables.length} mesas`);
+</script>
+</body>
+</html>
