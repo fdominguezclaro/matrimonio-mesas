@@ -122,9 +122,14 @@
   .sidebar-table.novios .sidebar-table-header { background: linear-gradient(135deg, #f5ebe0, #e8d5c4); }
   .sidebar-table-header:hover { background: #f0ebe6; }
   .sidebar-table-header .st-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sidebar-table-header .st-count { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; cursor: pointer; }
+  .sidebar-table-header .st-count { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
   .sidebar-table-header .st-count.warning { color: var(--danger); font-weight: 600; }
   .sidebar-table-header .st-count.ok { color: var(--success); }
+  .st-cap-controls, .table-cap-controls { display: inline-flex; align-items: center; gap: 2px; }
+  .cap-btn, .cap-btn-floor { background: none; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 0.7rem; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); padding: 0; line-height: 1; }
+  .cap-btn:hover, .cap-btn-floor:hover { background: var(--border); color: var(--text); }
+  .cap-btn-floor { font-size: 0.6rem; width: 16px; height: 16px; background: rgba(255,255,255,0.3); border-color: rgba(255,255,255,0.4); color: rgba(255,255,255,0.8); }
+  .cap-btn-floor:hover { background: rgba(255,255,255,0.5); color: #fff; }
   .sidebar-table-body { padding: 2px 4px 4px; min-height: 24px; }
   .sidebar-table-body .drop-placeholder-sm {
     color: var(--text-muted); font-size: 0.7rem; text-align: center;
@@ -429,7 +434,6 @@
     <div class="dropdown">
       <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('ddHerram')">Herramientas</button>
       <div class="dropdown-menu" id="ddHerram">
-        <button onclick="addNoviosTable()">Mesa Novios</button>
         <button onclick="autoLayout()">Ordenar mesas</button>
         <button class="danger" onclick="resetAll()">Reset</button>
       </div>
@@ -1012,7 +1016,16 @@ function loadState() {
     const sg = localStorage.getItem(GUEST_KEY);
     if (sg) { guests = JSON.parse(sg); groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort(); }
   } catch (e) { console.error('Error loading state:', e); }
+  ensureNoviosTable();
   if (NPOINT_URL) loadFromCloud();
+}
+
+function ensureNoviosTable() {
+  if (!tables.some(t => t.isNovios)) {
+    tableCounter++;
+    const table = { id: 'table-novios', name: 'Mesa Novios', isNovios: true, capacity: 26, guestIds: [], x: 800, y: 200 };
+    tables.unshift(table);
+  }
 }
 
 // ============ TABLE MANAGEMENT ============
@@ -1046,6 +1059,7 @@ function addNoviosTable() {
 function deleteTable(tableId) {
   const table = tables.find(t => t.id === tableId);
   if (!table) return;
+  if (table.isNovios) { showToast('La mesa de novios no se puede eliminar', 'warning'); return; }
   if (table.guestIds.length > 0) {
     const names = table.guestIds.slice(0, 5).map(gid => {
       const g = guests.find(x => x.id === gid); return g ? g.fullName : '?';
@@ -1073,16 +1087,15 @@ function renameTable(tableId) {
   });
 }
 
-function setTableCapacity(tableId) {
+function changeTableCapacity(tableId, delta) {
   const table = tables.find(t => t.id === tableId);
   if (!table) return;
-  const cap = table.capacity || (table.isNovios ? 26 : 10);
-  showInputModal('Capacidad de la mesa:', String(cap), (newCap) => {
-    if (newCap !== '' && !isNaN(parseInt(newCap)) && parseInt(newCap) > 0) {
-      table.capacity = parseInt(newCap);
-      saveState(); renderAll();
-    }
-  });
+  const cap = getTableCapacity(table);
+  const minCap = Math.max(1, table.guestIds.length);
+  const newCap = cap + delta;
+  if (newCap < minCap) { showToast(`Minimo ${minCap}`, 'warning'); return; }
+  table.capacity = newCap;
+  saveState(); renderAll();
 }
 
 function getTableCapacity(table) {
@@ -1134,9 +1147,13 @@ function autoAssignByGroup() {
   if (guests.length === 0) { showToast('Carga el CSV primero', 'warning'); return; }
   const unassigned = getUnassignedGuests();
   if (unassigned.length === 0) { showToast('Todos ya asignados'); return; }
+  const assigned = guests.length - unassigned.length;
+  const msg = assigned > 0
+    ? `Se crearan mesas para ${unassigned.length} invitados sin asignar. Los ${assigned} ya asignados se mantienen en sus mesas.`
+    : `Se crearan mesas automaticas para ${unassigned.length} invitados y se ordenaran en el plano.`;
   showConfirmModal(
     'Auto-agrupar por grupo social?',
-    `Se crearan mesas automaticas para ${unassigned.length} invitados sin asignar y se ordenaran en el plano.`,
+    msg,
     'Auto-agrupar y ordenar',
     doAutoAssign
   );
@@ -1631,7 +1648,11 @@ function renderTableList() {
     header.className = 'sidebar-table-header';
     header.innerHTML = `
       <span class="st-name" onclick="scrollToTable('${t.id}')" title="Click para ver en plano">${t.name}</span>
-      <span class="st-count ${countClass}" onclick="event.stopPropagation(); setTableCapacity('${t.id}')" title="Click para cambiar capacidad">${count}/${cap}</span>`;
+      <span class="st-cap-controls">
+        <button class="cap-btn" onclick="event.stopPropagation(); changeTableCapacity('${t.id}', -1)">−</button>
+        <span class="st-count ${countClass}">${count}/${cap}</span>
+        <button class="cap-btn" onclick="event.stopPropagation(); changeTableCapacity('${t.id}', 1)">+</button>
+      </span>`;
     card.appendChild(header);
 
     // Body with guests
@@ -1913,7 +1934,11 @@ function renderFloor() {
     surface.onmouseleave = hideTableTooltip;
     surface.innerHTML = `
       <span class="table-name-label" onclick="event.stopPropagation(); renameTable('${table.id}')">${table.name}</span>
-      <span class="table-count ${countClass}" onclick="event.stopPropagation(); setTableCapacity('${table.id}')" title="Cambiar capacidad">${count}/${cap}</span>`;
+      <span class="table-cap-controls">
+        <button class="cap-btn-floor" onclick="event.stopPropagation(); changeTableCapacity('${table.id}', -1)">−</button>
+        <span class="table-count ${countClass}">${count}/${cap}</span>
+        <button class="cap-btn-floor" onclick="event.stopPropagation(); changeTableCapacity('${table.id}', 1)">+</button>
+      </span>`;
     el.appendChild(surface);
 
     // Delete button
