@@ -908,13 +908,22 @@ async function decompressState(b64url) {
   return JSON.parse(text);
 }
 
-async function shortenUrl(longUrl) {
-  try {
-    const resp = await fetch('https://is.gd/create.php?format=json&url=' + encodeURIComponent(longUrl));
-    const data = await resp.json();
-    if (data.shorturl) return data.shorturl;
-  } catch(e) { /* fallback to long url */ }
-  return longUrl;
+async function uploadToBlob(state) {
+  const resp = await fetch('https://jsonblob.com/api/jsonBlob', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state)
+  });
+  if (!resp.ok) throw new Error('Error subiendo estado');
+  const blobUrl = resp.headers.get('Location') || resp.headers.get('x-jsonblob');
+  const blobId = blobUrl.split('/').pop();
+  return blobId;
+}
+
+async function loadFromBlob(blobId) {
+  const resp = await fetch('https://jsonblob.com/api/jsonBlob/' + blobId);
+  if (!resp.ok) throw new Error('Blob no encontrado');
+  return await resp.json();
 }
 
 async function createSharedRoom() {
@@ -925,18 +934,12 @@ async function createSharedRoom() {
       f: [...activeFilters],
       g: guests
     };
-    const compressed = await compressState(state);
-    const shareUrl = location.origin + location.pathname + '#d=' + compressed;
-    if (shareUrl.length > 100000) {
-      showToast('Estado demasiado grande para compartir por URL. Usa Guardar estado.', 'warning');
-      return;
+    const blobId = await uploadToBlob(state);
+    const shareUrl = location.origin + location.pathname + '#b=' + blobId;
+    try { await navigator.clipboard.writeText(shareUrl); } catch(e) {
+      prompt('Comparte este link:', shareUrl);
     }
-    const finalUrl = await shortenUrl(shareUrl);
-    const isShort = finalUrl !== shareUrl;
-    try { await navigator.clipboard.writeText(finalUrl); } catch(e) {
-      prompt('Comparte este link:', finalUrl);
-    }
-    showToast(isShort ? 'Link corto copiado' : `Link copiado (${Math.round(compressed.length/1024)}KB)`, 'success');
+    showToast('Link corto copiado', 'success');
   } catch (e) {
     showToast('Error generando link: ' + e.message, 'warning');
   }
@@ -944,9 +947,17 @@ async function createSharedRoom() {
 
 async function loadFromUrlHash() {
   const hash = location.hash.slice(1);
-  if (!hash.startsWith('d=')) return false;
+  let data = null;
+  if (hash.startsWith('b=')) {
+    try {
+      data = await loadFromBlob(hash.slice(2));
+    } catch(e) { console.warn('Error loading from blob:', e); return false; }
+  } else if (hash.startsWith('d=')) {
+    try {
+      data = await decompressState(hash.slice(2));
+    } catch(e) { console.warn('Error loading from URL:', e); return false; }
+  } else { return false; }
   try {
-    const data = await decompressState(hash.slice(2));
     if (data && data.t) {
       tables = data.t || [];
       tableCounter = data.c || 0;
