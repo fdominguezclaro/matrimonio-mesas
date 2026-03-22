@@ -884,40 +884,47 @@ function processCSV(rows) {
 }
 
 // ============ PERSISTENCE ============
-const NPOINT_ID = location.hash.slice(1);
-let NPOINT_URL = NPOINT_ID ? `https://api.npoint.io/${NPOINT_ID}` : null;
+const CLOUD_BASE = 'https://jsonblob.com/api/jsonBlob';
+const CLOUD_ID = location.hash.slice(1);
+let CLOUD_URL = CLOUD_ID ? `${CLOUD_BASE}/${CLOUD_ID}` : null;
 let _cloudSaveTimeout;
 let _isSyncing = false;
 let _cloudPollInterval;
 
+function _updateSyncTime() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const syncEl = document.getElementById('lastSync');
+  if (syncEl) syncEl.textContent = `Sync ${hh}:${mm}`;
+}
+
 function saveToCloud() {
-  if (!NPOINT_URL || _isSyncing) return;
+  if (!CLOUD_URL || _isSyncing) return;
   clearTimeout(_cloudSaveTimeout);
   _cloudSaveTimeout = setTimeout(async () => {
     try {
-      await fetch(NPOINT_URL, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(CLOUD_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
           tables, tableCounter,
           activeFilters: [...activeFilters],
           guests
         })
       });
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
-      const syncEl = document.getElementById('lastSync');
-      if (syncEl) syncEl.textContent = `Sync ${hh}:${mm}`;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      _updateSyncTime();
     } catch (e) { console.warn('Cloud save failed:', e); }
   }, 500);
 }
 
 async function loadFromCloud() {
-  if (!NPOINT_URL || _isSyncing) return;
+  if (!CLOUD_URL || _isSyncing) return;
   _isSyncing = true;
   try {
-    const res = await fetch(NPOINT_URL);
+    const res = await fetch(CLOUD_URL, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data && data.tables) {
       tables = data.tables || [];
@@ -929,11 +936,7 @@ async function loadFromCloud() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ tables, tableCounter, activeFilters: [...activeFilters] }));
       localStorage.setItem(GUEST_KEY, JSON.stringify(guests));
       renderAll();
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
-      const syncEl = document.getElementById('lastSync');
-      if (syncEl) syncEl.textContent = `Sync ${hh}:${mm}`;
+      _updateSyncTime();
     }
   } catch (e) { console.warn('Cloud load failed:', e); }
   _isSyncing = false;
@@ -947,16 +950,18 @@ async function createSharedRoom() {
   };
   try {
     showToast('Creando sala compartida...');
-    const res = await fetch('https://api.npoint.io/', {
+    const res = await fetch(CLOUD_BASE, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(state)
     });
-    const text = await res.text();
-    // npoint returns the URL like https://api.npoint.io/XXXX
-    const id = text.trim().replace('https://api.npoint.io/', '');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const loc = res.headers.get('Location');
+    if (!loc) throw new Error('No se recibió ID del servidor');
+    const id = loc.split('/').pop();
+    if (!id || id.length < 5 || /[<>]/.test(id)) throw new Error('ID inválido recibido');
     location.hash = id;
-    NPOINT_URL = `https://api.npoint.io/${id}`;
+    CLOUD_URL = `${CLOUD_BASE}/${id}`;
     startCloudPolling();
     updateCloudUI();
     const shareUrl = location.href;
@@ -978,7 +983,7 @@ function updateCloudUI() {
   const shareBtn = document.getElementById('btnShare');
   const syncBtn = document.getElementById('btnSync');
   const syncStatus = document.getElementById('lastSync');
-  if (NPOINT_URL) {
+  if (CLOUD_URL) {
     if (shareBtn) shareBtn.style.display = 'none';
     if (syncBtn) syncBtn.style.display = '';
     if (syncStatus) syncStatus.style.display = '';
@@ -1017,7 +1022,7 @@ function loadState() {
     if (sg) { guests = JSON.parse(sg); groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort(); }
   } catch (e) { console.error('Error loading state:', e); }
   ensureNoviosTable();
-  if (NPOINT_URL) loadFromCloud();
+  if (CLOUD_URL) loadFromCloud();
 }
 
 function ensureNoviosTable() {
@@ -1128,7 +1133,16 @@ function doAutoAssign() {
     if (!byGroup[grp]) byGroup[grp] = [];
     byGroup[grp].push(g);
   });
-  Object.entries(byGroup).forEach(([groupName, groupGuests]) => {
+  // Separar grupos grandes (>=8) y chicos (<8)
+  const bigGroups = {};
+  const smallGroups = {};
+  Object.entries(byGroup).forEach(([name, guests]) => {
+    if (guests.length >= 8) bigGroups[name] = guests;
+    else smallGroups[name] = guests;
+  });
+
+  // Grupos grandes: chunks de 10 (igual que antes)
+  Object.entries(bigGroups).forEach(([groupName, groupGuests]) => {
     let chunk = 0;
     for (let i = 0; i < groupGuests.length; i += 10) {
       chunk++;
@@ -1138,6 +1152,41 @@ function doAutoAssign() {
       table.guestIds = slice.map(g => g.id);
     }
   });
+
+  // Grupos chicos: fusionar para que ninguna mesa quede con menos de 8
+  const smallEntries = Object.entries(smallGroups);
+  let currentBatch = [];
+  let currentNames = [];
+  let lastSmallTable = null;
+
+  smallEntries.forEach(([name, guests]) => {
+    currentBatch.push(...guests);
+    currentNames.push(name);
+
+    while (currentBatch.length >= 10) {
+      const slice = currentBatch.splice(0, 10);
+      const tableName = currentNames.join(' + ');
+      const table = addTable(tableName);
+      table.guestIds = slice.map(g => g.id);
+      lastSmallTable = table;
+      currentNames = [];
+    }
+  });
+
+  if (currentBatch.length > 0) {
+    if (currentBatch.length >= 8 || !lastSmallTable) {
+      // Suficientes para mesa propia, o no hay mesa previa donde fusionar
+      const tableName = currentNames.join(' + ');
+      const table = addTable(tableName);
+      table.guestIds = currentBatch.map(g => g.id);
+    } else {
+      // Fusionar con la última mesa chica creada
+      currentBatch.forEach(g => lastSmallTable.guestIds.push(g.id));
+      if (currentNames.length > 0) {
+        lastSmallTable.name += ' + ' + currentNames.join(' + ');
+      }
+    }
+  }
   saveState(); renderAll();
   autoLayout();
   showToast(`Auto-agrupacion: ${Object.keys(byGroup).length} grupos`, 'success');
@@ -1771,14 +1820,15 @@ function renderFilters() {
 
 function renderSidebar() {
   const list = document.getElementById('guestList');
-  const search = document.getElementById('searchInput').value.toLowerCase();
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const search = norm(document.getElementById('searchInput').value);
   let unassigned = getUnassignedGuests();
 
   if (search) {
     unassigned = unassigned.filter(g =>
-      g.fullName.toLowerCase().includes(search) ||
-      (g.nickname && g.nickname.toLowerCase().includes(search)) ||
-      g.group.toLowerCase().includes(search)
+      norm(g.fullName).includes(search) ||
+      (g.nickname && norm(g.nickname).includes(search)) ||
+      norm(g.group).includes(search)
     );
   }
   if (activeFilters.size > 0) unassigned = unassigned.filter(g => activeFilters.has(g.group));
@@ -1827,9 +1877,9 @@ function renderSidebar() {
   if (search) {
     const assignedIds = new Set(tables.flatMap(t => t.guestIds));
     let assignedMatches = guests.filter(g => assignedIds.has(g.id) && (
-      g.fullName.toLowerCase().includes(search) ||
-      (g.nickname && g.nickname.toLowerCase().includes(search)) ||
-      g.group.toLowerCase().includes(search)
+      norm(g.fullName).includes(search) ||
+      (g.nickname && norm(g.nickname).includes(search)) ||
+      norm(g.group).includes(search)
     ));
     if (activeFilters.size > 0) assignedMatches = assignedMatches.filter(g => activeFilters.has(g.group));
 
@@ -2049,7 +2099,7 @@ loadState();
 renderAll();
 zoomFit();
 updateCloudUI();
-if (NPOINT_URL) startCloudPolling();
+if (CLOUD_URL) startCloudPolling();
 if (guests.length > 0) showToast(`Cargado: ${guests.length} invitados, ${tables.length} mesas`);
 </script>
 </body>
