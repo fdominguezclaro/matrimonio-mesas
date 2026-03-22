@@ -908,6 +908,15 @@ async function decompressState(b64url) {
   return JSON.parse(text);
 }
 
+async function shortenUrl(longUrl) {
+  try {
+    const resp = await fetch('https://is.gd/create.php?format=json&url=' + encodeURIComponent(longUrl));
+    const data = await resp.json();
+    if (data.shorturl) return data.shorturl;
+  } catch(e) { /* fallback to long url */ }
+  return longUrl;
+}
+
 async function createSharedRoom() {
   try {
     showToast('Generando link...');
@@ -922,10 +931,12 @@ async function createSharedRoom() {
       showToast('Estado demasiado grande para compartir por URL. Usa Guardar estado.', 'warning');
       return;
     }
-    try { await navigator.clipboard.writeText(shareUrl); } catch(e) {
-      prompt('Comparte este link:', shareUrl);
+    const finalUrl = await shortenUrl(shareUrl);
+    const isShort = finalUrl !== shareUrl;
+    try { await navigator.clipboard.writeText(finalUrl); } catch(e) {
+      prompt('Comparte este link:', finalUrl);
     }
-    showToast(`Link copiado (${Math.round(compressed.length/1024)}KB)`, 'success');
+    showToast(isShort ? 'Link corto copiado' : `Link copiado (${Math.round(compressed.length/1024)}KB)`, 'success');
   } catch (e) {
     showToast('Error generando link: ' + e.message, 'warning');
   }
