@@ -411,7 +411,6 @@
     <span id="statUnassigned">0 sin mesa</span>
     <span id="statTables">0 mesas</span>
     <span id="lastSaved" style="opacity:0.6"></span>
-    <span id="lastSync" style="opacity:0.6; display:none"></span>
   </div>
   <div class="header-actions">
     <label class="btn btn-primary" for="csvInput">Cargar CSV</label>
@@ -419,7 +418,6 @@
     <button class="btn btn-secondary" onclick="addTable()">+ Mesa</button>
     <button class="btn btn-secondary" onclick="autoAssignByGroup()">Auto-agrupar</button>
     <button class="btn btn-primary" id="btnShare" onclick="createSharedRoom()">Compartir</button>
-    <button class="btn btn-secondary" id="btnSync" onclick="loadFromCloud()" style="display:none">Sincronizar</button>
     <div class="dropdown">
       <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('ddArchivo')">Archivo</button>
       <div class="dropdown-menu" id="ddArchivo">
@@ -884,114 +882,76 @@ function processCSV(rows) {
 }
 
 // ============ PERSISTENCE ============
-const CLOUD_BASE = 'https://jsonblob.com/api/jsonBlob';
-const CLOUD_ID = location.hash.slice(1);
-let CLOUD_URL = CLOUD_ID ? `${CLOUD_BASE}/${CLOUD_ID}` : null;
-let _cloudSaveTimeout;
-let _isSyncing = false;
-let _cloudPollInterval;
 
-function _updateSyncTime() {
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const syncEl = document.getElementById('lastSync');
-  if (syncEl) syncEl.textContent = `Sync ${hh}:${mm}`;
+// --- URL sharing via compressed state in hash ---
+async function compressState(obj) {
+  const json = JSON.stringify(obj);
+  const blob = new Blob([json]);
+  const cs = new CompressionStream('deflate');
+  const stream = blob.stream().pipeThrough(cs);
+  const buf = await new Response(stream).arrayBuffer();
+  // base64url encode
+  let b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function saveToCloud() {
-  if (!CLOUD_URL || _isSyncing) return;
-  clearTimeout(_cloudSaveTimeout);
-  _cloudSaveTimeout = setTimeout(async () => {
-    try {
-      const res = await fetch(CLOUD_URL, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({
-          tables, tableCounter,
-          activeFilters: [...activeFilters],
-          guests
-        })
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      _updateSyncTime();
-    } catch (e) { console.warn('Cloud save failed:', e); }
-  }, 500);
+async function decompressState(b64url) {
+  // base64url decode
+  let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  const blob = new Blob([bytes]);
+  const ds = new DecompressionStream('deflate');
+  const stream = blob.stream().pipeThrough(ds);
+  const text = await new Response(stream).text();
+  return JSON.parse(text);
 }
 
-async function loadFromCloud() {
-  if (!CLOUD_URL || _isSyncing) return;
-  _isSyncing = true;
+async function createSharedRoom() {
   try {
-    const res = await fetch(CLOUD_URL, { headers: { 'Accept': 'application/json' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data && data.tables) {
-      tables = data.tables || [];
-      tableCounter = data.tableCounter || 0;
-      guests = data.guests || [];
-      activeFilters = new Set(data.activeFilters || []);
+    showToast('Generando link...');
+    const state = {
+      t: tables, c: tableCounter,
+      f: [...activeFilters],
+      g: guests
+    };
+    const compressed = await compressState(state);
+    const shareUrl = location.origin + location.pathname + '#d=' + compressed;
+    if (shareUrl.length > 100000) {
+      showToast('Estado demasiado grande para compartir por URL. Usa Guardar estado.', 'warning');
+      return;
+    }
+    try { await navigator.clipboard.writeText(shareUrl); } catch(e) {
+      prompt('Comparte este link:', shareUrl);
+    }
+    showToast(`Link copiado (${Math.round(compressed.length/1024)}KB)`, 'success');
+  } catch (e) {
+    showToast('Error generando link: ' + e.message, 'warning');
+  }
+}
+
+async function loadFromUrlHash() {
+  const hash = location.hash.slice(1);
+  if (!hash.startsWith('d=')) return false;
+  try {
+    const data = await decompressState(hash.slice(2));
+    if (data && data.t) {
+      tables = data.t || [];
+      tableCounter = data.c || 0;
+      guests = data.g || [];
+      activeFilters = new Set(data.f || []);
       tables.forEach(t => { if (!t.shape) t.shape = 'round'; });
       groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort();
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ tables, tableCounter, activeFilters: [...activeFilters] }));
       localStorage.setItem(GUEST_KEY, JSON.stringify(guests));
-      renderAll();
-      _updateSyncTime();
+      // Clean hash after loading
+      history.replaceState(null, '', location.pathname);
+      showToast('Estado cargado desde link compartido', 'success');
+      return true;
     }
-  } catch (e) { console.warn('Cloud load failed:', e); }
-  _isSyncing = false;
-}
-
-async function createSharedRoom() {
-  const state = {
-    tables, tableCounter,
-    activeFilters: [...activeFilters],
-    guests
-  };
-  try {
-    showToast('Creando sala compartida...');
-    const res = await fetch(CLOUD_BASE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(state)
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const loc = res.headers.get('Location');
-    if (!loc) throw new Error('No se recibió ID del servidor');
-    const id = loc.split('/').pop();
-    if (!id || id.length < 5 || /[<>]/.test(id)) throw new Error('ID inválido recibido');
-    location.hash = id;
-    CLOUD_URL = `${CLOUD_BASE}/${id}`;
-    startCloudPolling();
-    updateCloudUI();
-    const shareUrl = location.href;
-    showToast('Sala creada. Link copiado al portapapeles.', 'success');
-    try { await navigator.clipboard.writeText(shareUrl); } catch(e) {
-      prompt('Comparte este link:', shareUrl);
-    }
-  } catch (e) {
-    showToast('Error creando sala: ' + e.message, 'warning');
-  }
-}
-
-function startCloudPolling() {
-  if (_cloudPollInterval) clearInterval(_cloudPollInterval);
-  _cloudPollInterval = setInterval(loadFromCloud, 10000);
-}
-
-function updateCloudUI() {
-  const shareBtn = document.getElementById('btnShare');
-  const syncBtn = document.getElementById('btnSync');
-  const syncStatus = document.getElementById('lastSync');
-  if (CLOUD_URL) {
-    if (shareBtn) shareBtn.style.display = 'none';
-    if (syncBtn) syncBtn.style.display = '';
-    if (syncStatus) syncStatus.style.display = '';
-  } else {
-    if (shareBtn) shareBtn.style.display = '';
-    if (syncBtn) syncBtn.style.display = 'none';
-    if (syncStatus) syncStatus.style.display = 'none';
-  }
+  } catch (e) { console.warn('Error loading from URL:', e); }
+  return false;
 }
 
 function saveState() {
@@ -1006,7 +966,6 @@ function saveState() {
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   document.getElementById('lastSaved').textContent = `Guardado ${hh}:${mm}`;
-  saveToCloud();
 }
 
 function loadState() {
@@ -1022,7 +981,6 @@ function loadState() {
     if (sg) { guests = JSON.parse(sg); groupNames = [...new Set(guests.map(g => g.group).filter(Boolean))].sort(); }
   } catch (e) { console.error('Error loading state:', e); }
   ensureNoviosTable();
-  if (CLOUD_URL) loadFromCloud();
 }
 
 function ensureNoviosTable() {
@@ -2096,11 +2054,12 @@ document.addEventListener('click', (e) => {
 
 // ============ INIT ============
 loadState();
-renderAll();
-zoomFit();
-updateCloudUI();
-if (CLOUD_URL) startCloudPolling();
-if (guests.length > 0) showToast(`Cargado: ${guests.length} invitados, ${tables.length} mesas`);
+loadFromUrlHash().then(loaded => {
+  if (loaded) { ensureNoviosTable(); }
+  renderAll();
+  zoomFit();
+  if (guests.length > 0) showToast(`Cargado: ${guests.length} invitados, ${tables.length} mesas`);
+});
 </script>
 </body>
 </html>
